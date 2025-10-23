@@ -21,4 +21,4 @@ venv\Scripts\activate
 pip install -r requirements.txt
 
 streamlit run src/frontend/app.py
-```bash
+```
