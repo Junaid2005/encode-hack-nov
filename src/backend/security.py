@@ -18,4 +18,3 @@ def require_api_key(
     if settings.backend_api_key:
         if not api_key or api_key != settings.backend_api_key:
             raise HTTPException(status_code=401, detail="Invalid or missing API key")
-

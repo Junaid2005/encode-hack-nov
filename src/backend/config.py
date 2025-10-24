@@ -103,17 +103,29 @@ def get_settings() -> Settings:
     pick up changes (get_settings.cache_clear()).
     """
     return Settings(
-        environment=_get_env_any(["ENVIRONMENT", "environment"], "development") or "development",
+        environment=_get_env_any(["ENVIRONMENT", "environment"], "development")
+        or "development",
         hypersync_api_url=_get_env_any(
-            ["HYPERSYNC_API_URL", "hypersync_api_url"], "https://fuel-testnet.hypersync.xyz/query"
+            ["HYPERSYNC_API_URL", "hypersync_api_url"],
+            "https://fuel-testnet.hypersync.xyz/query",
         )
         or "https://fuel-testnet.hypersync.xyz/query",
-        hypersync_api_token=_get_env_any(["HYPERSYNC_API_TOKEN", "hypersync_api_token"], None),
+        hypersync_api_token=_get_env_any(
+            ["HYPERSYNC_API_TOKEN", "hypersync_api_token"], None
+        ),
         backend_api_key=_get_env_any(["BACKEND_API_KEY", "backend_api_key"], None),
-        request_timeout_seconds=_get_int(["REQUEST_TIMEOUT_SECONDS", "request_timeout_seconds"], 30),
-        request_verify_tls=_get_bool(["REQUEST_VERIFY_TLS", "request_verify_tls"], True),
-        large_transfer_threshold=_get_float(["LARGE_TRANSFER_THRESHOLD", "large_transfer_threshold"], 100_000.0),
-        high_frequency_threshold=_get_int(["HIGH_FREQUENCY_THRESHOLD", "high_frequency_threshold"], 50),
+        request_timeout_seconds=_get_int(
+            ["REQUEST_TIMEOUT_SECONDS", "request_timeout_seconds"], 30
+        ),
+        request_verify_tls=_get_bool(
+            ["REQUEST_VERIFY_TLS", "request_verify_tls"], True
+        ),
+        large_transfer_threshold=_get_float(
+            ["LARGE_TRANSFER_THRESHOLD", "large_transfer_threshold"], 100_000.0
+        ),
+        high_frequency_threshold=_get_int(
+            ["HIGH_FREQUENCY_THRESHOLD", "high_frequency_threshold"], 50
+        ),
         concentration_share_threshold=_get_float(
             ["CONCENTRATION_SHARE_THRESHOLD", "concentration_share_threshold"], 0.20
         ),

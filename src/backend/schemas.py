@@ -62,6 +62,7 @@ class CombinedResponse(BaseModel):
 
 # --- HyperSync meta-aware responses (per context.txt) ---
 
+
 class HyperSyncMeta(BaseModel):
     archive_height: Optional[int] = None
     next_block: Optional[int] = None

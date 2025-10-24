@@ -20,12 +20,16 @@ Usage in Streamlit (example):
 
 Environment variables: see src.backend.config.Settings for all available options.
 """
+
 from typing import Any, Dict, Iterable, List, Optional
 
 from .config import Settings, get_settings
 from .dal import HyperSyncClient
 from .schemas import CombinedResponse, ProcessedResponse, AnalyzeResponse
-from .service import process_data as _process_data_impl, analyze_data as _analyze_data_impl
+from .service import (
+    process_data as _process_data_impl,
+    analyze_data as _analyze_data_impl,
+)
 from .models import Transaction, Address, Case
 from .case_management import (
     create_case as _create_case,
@@ -65,19 +69,26 @@ def _get_client(settings: Optional[Settings] = None) -> HyperSyncClient:
     return HyperSyncClient(settings)
 
 
-def fetch_data(query: Dict[str, Any], *, settings: Optional[Settings] = None) -> List[Dict[str, Any]]:
+def fetch_data(
+    query: Dict[str, Any], *, settings: Optional[Settings] = None
+) -> List[Dict[str, Any]]:
     """Fetch raw records from HyperSync using the provided query dict."""
     client = _get_client(settings)
     return client.query(query)
 
 
-def process_data(data: List[Dict[str, Any]], *, sample_size: int = 10) -> ProcessedResponse:
+def process_data(
+    data: List[Dict[str, Any]], *, sample_size: int = 10
+) -> ProcessedResponse:
     """Aggregate and summarize raw records (format-independent heuristics)."""
     return _process_data_impl(data, sample_size=sample_size)
 
 
 def analyze_data(
-    data: List[Dict[str, Any]], *, settings: Optional[Settings] = None, sample_size: int = 10
+    data: List[Dict[str, Any]],
+    *,
+    settings: Optional[Settings] = None,
+    sample_size: int = 10,
 ) -> AnalyzeResponse:
     """Run heuristic analysis on records. Internally uses process_data first."""
     settings = settings or get_settings()
@@ -127,7 +138,10 @@ def build_query_for_address(
 
 # --- Convenience fetchers mapped to common selections ---
 
-def fetch_transactions(address: str, start_block: int, end_block: int) -> List[Dict[str, Any]]:
+
+def fetch_transactions(
+    address: str, start_block: int, end_block: int
+) -> List[Dict[str, Any]]:
     """Fetch transactions involving the address either as sender or recipient.
 
     Uses two transaction selections (OR): one for 'from', one for 'to'.
@@ -167,9 +181,7 @@ def fetch_addresses(transaction_hash: str) -> List[Dict[str, Any]]:
     this should be adapted with an appropriate narrowing strategy.
     """
     query: Dict[str, Any] = {
-        "transactions": [
-            {"hash": [transaction_hash]}
-        ],
+        "transactions": [{"hash": [transaction_hash]}],
         "field_selection": {
             "transaction": ["hash", "from", "to", "value", "status", "gas_used"],
             "block": ["number", "timestamp"],
@@ -200,7 +212,9 @@ def fetch_blocks(block_number: int) -> List[Dict[str, Any]]:
     return fetch_data(query)
 
 
-def fetch_logs(contract_address: str, from_block: int, to_block: int, topic0: Optional[str] = None) -> List[Dict[str, Any]]:
+def fetch_logs(
+    contract_address: str, from_block: int, to_block: int, topic0: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """Fetch logs for a contract, optionally filtering by the first topic (event signature)."""
     topics = [[topic0]] if topic0 else []
     query: Dict[str, Any] = {
@@ -340,7 +354,11 @@ def fetch_traces(
 
 
 def fetch_internal_transactions(
-    *, from_addr: Optional[str] = None, to_addr: Optional[str] = None, start_block: int, end_block: int
+    *,
+    from_addr: Optional[str] = None,
+    to_addr: Optional[str] = None,
+    start_block: int,
+    end_block: int,
 ) -> List[Dict[str, Any]]:
     """Fetch internal txs (trace type 'call')."""
     return fetch_traces(
@@ -353,7 +371,10 @@ def fetch_internal_transactions(
 
 
 def fetch_receipts(
-    *, tx_hash: Optional[str] = None, start_block: Optional[int] = None, end_block: Optional[int] = None
+    *,
+    tx_hash: Optional[str] = None,
+    start_block: Optional[int] = None,
+    end_block: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Fetch receipt-like data.
 
@@ -364,7 +385,9 @@ def fetch_receipts(
         tx_sel = [{"hash": [tx_hash]}]
     else:
         if start_block is None or end_block is None:
-            raise ValueError("start_block and end_block required if tx_hash is not provided")
+            raise ValueError(
+                "start_block and end_block required if tx_hash is not provided"
+            )
         # No specific filter; return receipts for range
         tx_sel = [{}]
 
@@ -417,10 +440,18 @@ def fetch_deployments(
     }
     results = fetch_data(query)
     # Client-side filter to only keep deployments
-    return [r for r in results if (r.get("contract_address") or (r.get("transaction") or {}).get("contract_address"))]
+    return [
+        r
+        for r in results
+        if (
+            r.get("contract_address")
+            or (r.get("transaction") or {}).get("contract_address")
+        )
+    ]
 
 
 # --- Case management (SQLite-backed) ---
+
 
 def create_case(name: str, description: Optional[str] = None) -> Case:
     return _create_case(name, description)
@@ -445,7 +476,9 @@ def add_case_addresses(case_id: str, addresses: Iterable[str | Address]) -> int:
     return _add_addresses(case_id, addr_models)
 
 
-def add_case_transactions(case_id: str, txs: Iterable[Dict[str, Any] | Transaction]) -> int:
+def add_case_transactions(
+    case_id: str, txs: Iterable[Dict[str, Any] | Transaction]
+) -> int:
     """Add transactions to a case. Accepts dicts or Transaction models."""
     tx_models: List[Transaction] = []
     for t in txs:
@@ -457,8 +490,11 @@ def add_case_transactions(case_id: str, txs: Iterable[Dict[str, Any] | Transacti
                 Transaction(
                     tx_id=str(t.get("tx_id")),
                     block_height=t.get("block_height"),
-                    asset_id=t.get("asset_id") or (t.get("input") or {}).get("asset_id"),
-                    amount=float(t.get("amount", (t.get("input") or {}).get("amount", 0.0))),
+                    asset_id=t.get("asset_id")
+                    or (t.get("input") or {}).get("asset_id"),
+                    amount=float(
+                        t.get("amount", (t.get("input") or {}).get("amount", 0.0))
+                    ),
                     address=(t.get("address") or (t.get("input") or {}).get("address")),
                 )
             )

@@ -26,7 +26,9 @@ def _extract_input_fields(rec: Dict[str, Any]) -> Tuple[str | None, float, str |
     return asset_id, amount_val, address
 
 
-def process_data(data: List[Dict[str, Any]], sample_size: int = 10) -> ProcessedResponse:
+def process_data(
+    data: List[Dict[str, Any]], sample_size: int = 10
+) -> ProcessedResponse:
     by_asset: Dict[str, float] = defaultdict(float)
     by_address: Dict[str, float] = defaultdict(float)
     tx_count_by_address: Dict[str, int] = defaultdict(int)
@@ -118,4 +120,3 @@ def analyze_data(
     )
 
     return AnalyzeResponse(findings=findings, summary=summary)
-

@@ -14,7 +14,7 @@ import pandas as pd
 import numpy as np
 
 # Add the backend directory to the path
-backend_path = os.path.join(os.path.dirname(__file__), '..', 'backend')
+backend_path = os.path.join(os.path.dirname(__file__), "..", "backend")
 sys.path.insert(0, backend_path)
 from yfinance_crypto import CryptoDataFetcher
 
@@ -46,12 +46,15 @@ st.title("HyperSync")
 # Crypto metrics
 col1, col2, col3 = st.columns(3)
 
+
 # Fetch crypto data using our backend method
 # @st.cache_data(ttl=60)  # Cache for 60 seconds
 def show_crypto_data():
     try:
         fetcher = CryptoDataFetcher()
-        crypto_data = fetcher.get_multiple_crypto_prices(['BTC', 'ETH', 'SOL', 'SPY', 'USD/GBP'])
+        crypto_data = fetcher.get_multiple_crypto_prices(
+            ["BTC", "ETH", "SOL", "SPY", "USD/GBP"]
+        )
         # print(crypto_data)
 
         # Create columns for each crypto
@@ -63,15 +66,16 @@ def show_crypto_data():
                 # with st.container(border=True):
                 st.metric(
                     label=f"{symbol}",
-                    value=crypto_data[symbol]['price'],
-                    delta=crypto_data[symbol]['change_percent'],
-                    chart_data=crypto_data[symbol]['chart_data'],
+                    value=crypto_data[symbol]["price"],
+                    delta=crypto_data[symbol]["change_percent"],
+                    chart_data=crypto_data[symbol]["chart_data"],
                     border=True,
                 )
 
     except Exception as e:
         st.error(f"Error loading crypto data: {e}")
         print("Error loading crypto data", e)
+
 
 show_crypto_data()
 
@@ -98,16 +102,18 @@ with col1:
         else:
             st.error("No fraud detected.")
             st.snow()
-        scatter_data = pd.DataFrame({
-            'X': np.random.normal(0, 1, 100),
-            'Y': np.random.normal(0, 1, 100),
-            'Size': np.random.randint(10, 100, 100)
-        })
+        scatter_data = pd.DataFrame(
+            {
+                "X": np.random.normal(0, 1, 100),
+                "Y": np.random.normal(0, 1, 100),
+                "Size": np.random.randint(10, 100, 100),
+            }
+        )
 
         st.scatter_chart(scatter_data)
 
 
-with col2:   
+with col2:
     if prompt := st.chat_input("How can I help you today?"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
@@ -134,12 +140,14 @@ if not _token:
 
 # Helper to handle Pydantic v1/v2 model serialization
 
+
 def to_dict(obj):
     if hasattr(obj, "model_dump"):
         return obj.model_dump()
     if hasattr(obj, "dict"):
         return obj.dict()
     return obj
+
 
 # Example query template from prompt.txt
 DEFAULT_QUERY = {
@@ -256,24 +264,38 @@ st.divider()
 
 st.subheader("3) Explorer")
 
-explorer_tabs = st.tabs([
-    "Transactions",
-    "Addresses",
-    "Blocks",
-    "Logs",
-    "Traces",
-    "Internal Tx",
-    "Receipts",
-    "Deployments",
-    "Token Transfers",
-])
+explorer_tabs = st.tabs(
+    [
+        "Transactions",
+        "Addresses",
+        "Blocks",
+        "Logs",
+        "Traces",
+        "Internal Tx",
+        "Receipts",
+        "Deployments",
+        "Token Transfers",
+    ]
+)
 
 # Transactions
 with explorer_tabs[0]:
     st.markdown("#### Fetch Transactions by Address")
     tx_addr = st.text_input("Address (from/to)", placeholder="0x...", key="tx_addr")
-    tx_from_block = st.number_input("Start Block", min_value=0, value=EX_SAMPLE["start_block"], step=1, key="tx_from_block")
-    tx_to_block = st.number_input("End Block", min_value=0, value=EX_SAMPLE["end_block"], step=1, key="tx_to_block")
+    tx_from_block = st.number_input(
+        "Start Block",
+        min_value=0,
+        value=EX_SAMPLE["start_block"],
+        step=1,
+        key="tx_from_block",
+    )
+    tx_to_block = st.number_input(
+        "End Block",
+        min_value=0,
+        value=EX_SAMPLE["end_block"],
+        step=1,
+        key="tx_to_block",
+    )
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("Fetch Transactions"):
@@ -282,7 +304,9 @@ with explorer_tabs[0]:
             else:
                 with st.spinner("Fetching transactions..."):
                     try:
-                        txs = sdk_fetch_transactions(tx_addr, tx_from_block, tx_to_block)
+                        txs = sdk_fetch_transactions(
+                            tx_addr, tx_from_block, tx_to_block
+                        )
                     except Exception as e:
                         st.exception(e)
                     else:
@@ -303,7 +327,11 @@ with explorer_tabs[0]:
             if st.button("Run Example (Transactions)", key="ex_tx"):
                 with st.spinner("Running example..."):
                     try:
-                        txs = sdk_fetch_transactions(example["address"], example["from_block"], example["to_block"]) 
+                        txs = sdk_fetch_transactions(
+                            example["address"],
+                            example["from_block"],
+                            example["to_block"],
+                        )
                     except Exception as e:
                         st.exception(e)
                     else:
@@ -330,7 +358,9 @@ with explorer_tabs[1]:
                         st.json(addrs[:20])
     with col_b:
         with st.expander("Example"):
-            example = {"tx_hash": "0xc5eee3ae9cf10fbee05325e3a25c3b19489783612e36cb55b054c2cb4f82fc28"}
+            example = {
+                "tx_hash": "0xc5eee3ae9cf10fbee05325e3a25c3b19489783612e36cb55b054c2cb4f82fc28"
+            }
             st.json(example)
             if st.button("Prefill Fields (Addresses)", key="prefill_addr"):
                 st.session_state["addr_tx_hash"] = example["tx_hash"]
@@ -347,7 +377,9 @@ with explorer_tabs[1]:
 # Blocks
 with explorer_tabs[2]:
     st.markdown("#### Fetch Block by Number")
-    blk_num = st.number_input("Block number", min_value=0, value=0, step=1, key="blk_num")
+    blk_num = st.number_input(
+        "Block number", min_value=0, value=0, step=1, key="blk_num"
+    )
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("Fetch Block"):
@@ -368,7 +400,7 @@ with explorer_tabs[2]:
             if st.button("Run Example (Block)", key="ex_block"):
                 with st.spinner("Running example..."):
                     try:
-                        blk = sdk_fetch_blocks(example["block_number"]) 
+                        blk = sdk_fetch_blocks(example["block_number"])
                     except Exception as e:
                         st.exception(e)
                     else:
@@ -379,9 +411,15 @@ with explorer_tabs[2]:
 with explorer_tabs[3]:
     st.markdown("#### Fetch Logs for Contract")
     lg_addr = st.text_input("Contract address", placeholder="0x...", key="lg_addr")
-    lg_from = st.number_input("From block", min_value=0, value=EX_SAMPLE["start_block"], step=1, key="lg_from")
-    lg_to = st.number_input("To block", min_value=0, value=EX_SAMPLE["end_block"], step=1, key="lg_to")
-    lg_topic0 = st.text_input("Topic0 (event signature hash, optional)", placeholder="0x...", key="lg_topic0")
+    lg_from = st.number_input(
+        "From block", min_value=0, value=EX_SAMPLE["start_block"], step=1, key="lg_from"
+    )
+    lg_to = st.number_input(
+        "To block", min_value=0, value=EX_SAMPLE["end_block"], step=1, key="lg_to"
+    )
+    lg_topic0 = st.text_input(
+        "Topic0 (event signature hash, optional)", placeholder="0x...", key="lg_topic0"
+    )
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("Fetch Logs"):
@@ -390,7 +428,9 @@ with explorer_tabs[3]:
             else:
                 with st.spinner("Fetching logs..."):
                     try:
-                        logs = sdk_fetch_logs(lg_addr, lg_from, lg_to, lg_topic0 or None)
+                        logs = sdk_fetch_logs(
+                            lg_addr, lg_from, lg_to, lg_topic0 or None
+                        )
                     except Exception as e:
                         st.exception(e)
                     else:
@@ -411,9 +451,16 @@ with explorer_tabs[3]:
                 st.session_state["lg_to"] = example["to_block"]
                 st.session_state["lg_topic0"] = example["topic0"]
             if st.button("Run Example (Logs)", key="ex_logs"):
-                with st.spinner("Running example (may be empty/large if no contract)..."):
+                with st.spinner(
+                    "Running example (may be empty/large if no contract)..."
+                ):
                     try:
-                        logs = sdk_fetch_logs(example["contract_address"], example["from_block"], example["to_block"], example["topic0"]) 
+                        logs = sdk_fetch_logs(
+                            example["contract_address"],
+                            example["from_block"],
+                            example["to_block"],
+                            example["topic0"],
+                        )
                     except Exception as e:
                         st.exception(e)
                     else:
@@ -425,13 +472,29 @@ with explorer_tabs[4]:
     st.markdown("#### Fetch Traces")
     tr_from = st.text_input("From address (optional)", key="tr_from")
     tr_to = st.text_input("To address (optional)", key="tr_to")
-    tr_call_types_csv = st.text_input("Call types (comma-separated, optional)", placeholder="call,delegatecall,create", key="tr_ct")
-    tr_start = st.number_input("Start block", min_value=0, value=EX_SAMPLE["start_block"], step=1, key="tr_start")
-    tr_end = st.number_input("End block", min_value=0, value=EX_SAMPLE["end_block"], step=1, key="tr_end")
+    tr_call_types_csv = st.text_input(
+        "Call types (comma-separated, optional)",
+        placeholder="call,delegatecall,create",
+        key="tr_ct",
+    )
+    tr_start = st.number_input(
+        "Start block",
+        min_value=0,
+        value=EX_SAMPLE["start_block"],
+        step=1,
+        key="tr_start",
+    )
+    tr_end = st.number_input(
+        "End block", min_value=0, value=EX_SAMPLE["end_block"], step=1, key="tr_end"
+    )
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("Fetch Traces", key="btn_traces"):
-            call_types = [s.strip() for s in tr_call_types_csv.split(",") if s.strip()] if tr_call_types_csv else None
+            call_types = (
+                [s.strip() for s in tr_call_types_csv.split(",") if s.strip()]
+                if tr_call_types_csv
+                else None
+            )
             with st.spinner("Fetching traces..."):
                 try:
                     traces = sdk_fetch_traces(
@@ -450,7 +513,7 @@ with explorer_tabs[4]:
         with st.expander("Example"):
             example = {
                 "from_addr": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",  # Uniswap V2 Router
-                "to_addr": "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",    # USDC
+                "to_addr": "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",  # USDC
                 "call_types": ["call", "delegatecall"],
                 "from_block": 17000000,
                 "to_block": 17000100,
@@ -459,7 +522,7 @@ with explorer_tabs[4]:
             if st.button("Prefill Fields (Traces)", key="prefill_traces"):
                 st.session_state["tr_from"] = example["from_addr"]
                 st.session_state["tr_to"] = example["to_addr"]
-                st.session_state["tr_ct"] = ",".join(example["call_types"]) 
+                st.session_state["tr_ct"] = ",".join(example["call_types"])
                 st.session_state["tr_start"] = example["from_block"]
                 st.session_state["tr_end"] = example["to_block"]
             if st.button("Run Example (Traces)", key="ex_traces"):
@@ -483,8 +546,16 @@ with explorer_tabs[5]:
     st.markdown("#### Fetch Internal Transactions (type=call)")
     it_from = st.text_input("From address (optional)", key="it_from")
     it_to = st.text_input("To address (optional)", key="it_to")
-    it_start = st.number_input("Start block", min_value=0, value=EX_SAMPLE["start_block"], step=1, key="it_start")
-    it_end = st.number_input("End block", min_value=0, value=EX_SAMPLE["end_block"], step=1, key="it_end")
+    it_start = st.number_input(
+        "Start block",
+        min_value=0,
+        value=EX_SAMPLE["start_block"],
+        step=1,
+        key="it_start",
+    )
+    it_end = st.number_input(
+        "End block", min_value=0, value=EX_SAMPLE["end_block"], step=1, key="it_end"
+    )
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("Fetch Internal Tx", key="btn_it"):
@@ -533,9 +604,23 @@ with explorer_tabs[5]:
 # Receipts
 with explorer_tabs[6]:
     st.markdown("#### Fetch Receipts")
-    rc_tx_hash = st.text_input("Transaction hash (optional)", placeholder="0x...", key="rc_hash")
-    rc_from = st.number_input("Start block (required if no tx hash)", min_value=0, value=EX_SAMPLE["start_block"], step=1, key="rc_from")
-    rc_to = st.number_input("End block (required if no tx hash)", min_value=0, value=EX_SAMPLE["start_block"] + 1, step=1, key="rc_to")
+    rc_tx_hash = st.text_input(
+        "Transaction hash (optional)", placeholder="0x...", key="rc_hash"
+    )
+    rc_from = st.number_input(
+        "Start block (required if no tx hash)",
+        min_value=0,
+        value=EX_SAMPLE["start_block"],
+        step=1,
+        key="rc_from",
+    )
+    rc_to = st.number_input(
+        "End block (required if no tx hash)",
+        min_value=0,
+        value=EX_SAMPLE["start_block"] + 1,
+        step=1,
+        key="rc_to",
+    )
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("Fetch Receipts", key="btn_receipts"):
@@ -544,7 +629,9 @@ with explorer_tabs[6]:
                     if rc_tx_hash:
                         receipts = sdk_fetch_receipts(tx_hash=rc_tx_hash)
                     else:
-                        receipts = sdk_fetch_receipts(start_block=rc_from, end_block=rc_to)
+                        receipts = sdk_fetch_receipts(
+                            start_block=rc_from, end_block=rc_to
+                        )
                 except Exception as e:
                     st.exception(e)
                 else:
@@ -552,7 +639,9 @@ with explorer_tabs[6]:
                     st.json(receipts[:20])
     with col_b:
         with st.expander("Example"):
-            example_by_hash = {"tx_hash": "0xc5eee3ae9cf10fbee05325e3a25c3b19489783612e36cb55b054c2cb4f82fc28"}
+            example_by_hash = {
+                "tx_hash": "0xc5eee3ae9cf10fbee05325e3a25c3b19489783612e36cb55b054c2cb4f82fc28"
+            }
             example_by_range = {"from_block": 17000000, "to_block": 17000050}
             st.write("By transaction hash:")
             st.json(example_by_hash)
@@ -565,7 +654,10 @@ with explorer_tabs[6]:
             if st.button("Run Example (Receipts by Range)", key="ex_receipts"):
                 with st.spinner("Running example..."):
                     try:
-                        receipts = sdk_fetch_receipts(start_block=example_by_range["from_block"], end_block=example_by_range["to_block"]) 
+                        receipts = sdk_fetch_receipts(
+                            start_block=example_by_range["from_block"],
+                            end_block=example_by_range["to_block"],
+                        )
                     except Exception as e:
                         st.exception(e)
                     else:
@@ -576,14 +668,24 @@ with explorer_tabs[6]:
 with explorer_tabs[7]:
     st.markdown("#### Fetch Contract Deployments")
     dp_sender = st.text_input("Sender address (optional)", key="dp_sender")
-    dp_from = st.number_input("Start block", min_value=0, value=EX_SAMPLE["start_block"], step=1, key="dp_from")
-    dp_to = st.number_input("End block", min_value=0, value=EX_SAMPLE["end_block"], step=1, key="dp_to")
+    dp_from = st.number_input(
+        "Start block",
+        min_value=0,
+        value=EX_SAMPLE["start_block"],
+        step=1,
+        key="dp_from",
+    )
+    dp_to = st.number_input(
+        "End block", min_value=0, value=EX_SAMPLE["end_block"], step=1, key="dp_to"
+    )
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("Fetch Deployments", key="btn_deployments"):
             with st.spinner("Fetching deployments..."):
                 try:
-                    deployments = sdk_fetch_deployments(start_block=dp_from, end_block=dp_to, sender=dp_sender or None)
+                    deployments = sdk_fetch_deployments(
+                        start_block=dp_from, end_block=dp_to, sender=dp_sender or None
+                    )
                 except Exception as e:
                     st.exception(e)
                 else:
@@ -600,7 +702,11 @@ with explorer_tabs[7]:
             if st.button("Run Example (Deployments)", key="ex_deployments"):
                 with st.spinner("Running example..."):
                     try:
-                        deployments = sdk_fetch_deployments(start_block=example["from_block"], end_block=example["to_block"], sender=example["sender"]) 
+                        deployments = sdk_fetch_deployments(
+                            start_block=example["from_block"],
+                            end_block=example["to_block"],
+                            sender=example["sender"],
+                        )
                     except Exception as e:
                         st.exception(e)
                     else:
@@ -613,8 +719,16 @@ with explorer_tabs[8]:
     tt_contract = st.text_input("Contract address (optional)", key="tt_contract")
     tt_from_holder = st.text_input("From holder (optional)", key="tt_from_holder")
     tt_to_holder = st.text_input("To holder (optional)", key="tt_to_holder")
-    tt_from = st.number_input("Start block", min_value=0, value=EX_SAMPLE["start_block"], step=1, key="tt_from")
-    tt_to = st.number_input("End block", min_value=0, value=EX_SAMPLE["end_block"], step=1, key="tt_to")
+    tt_from = st.number_input(
+        "Start block",
+        min_value=0,
+        value=EX_SAMPLE["start_block"],
+        step=1,
+        key="tt_from",
+    )
+    tt_to = st.number_input(
+        "End block", min_value=0, value=EX_SAMPLE["end_block"], step=1, key="tt_to"
+    )
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("Fetch Token Transfers", key="btn_tt"):
@@ -636,7 +750,7 @@ with explorer_tabs[8]:
         with st.expander("Example"):
             example = {
                 "contract_address": "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",  # USDC
-                "from_holder": "0x28C6c06298d514Db089934071355E5743bf21d60",   # Binance hot wallet
+                "from_holder": "0x28C6c06298d514Db089934071355E5743bf21d60",  # Binance hot wallet
                 "to_holder": None,
                 "from_block": 17000000,
                 "to_block": 17001000,
@@ -649,7 +763,9 @@ with explorer_tabs[8]:
                 st.session_state["tt_from"] = example["from_block"]
                 st.session_state["tt_to"] = example["to_block"]
             if st.button("Run Example (Token Transfers)", key="ex_tt"):
-                with st.spinner("Running example (may be empty/large if no contract)..."):
+                with st.spinner(
+                    "Running example (may be empty/large if no contract)..."
+                ):
                     try:
                         transfers = sdk_fetch_token_transfers(
                             contract_address=example["contract_address"],

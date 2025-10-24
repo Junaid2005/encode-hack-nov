@@ -12,7 +12,9 @@ from typing import Iterable, List, Optional
 from .models import Case, Address, Transaction
 
 
-DATA_DIR = Path(os.getenv("CASE_DATA_DIR", Path(__file__).resolve().parents[2] / "data"))
+DATA_DIR = Path(
+    os.getenv("CASE_DATA_DIR", Path(__file__).resolve().parents[2] / "data")
+)
 DB_PATH = Path(os.getenv("CASE_DB_PATH", DATA_DIR / "cases.db"))
 
 
@@ -91,7 +93,9 @@ def list_cases() -> List[Case]:
     init_db()
     with _conn() as c:
         cur = c.cursor()
-        cur.execute("SELECT case_id, name, description, created_at, updated_at FROM cases ORDER BY created_at DESC")
+        cur.execute(
+            "SELECT case_id, name, description, created_at, updated_at FROM cases ORDER BY created_at DESC"
+        )
         rows = cur.fetchall()
     out: List[Case] = []
     for case_id, name, description, created_at, updated_at in rows:
@@ -111,7 +115,10 @@ def get_case(case_id: str) -> Optional[Case]:
     init_db()
     with _conn() as c:
         cur = c.cursor()
-        cur.execute("SELECT case_id, name, description, created_at, updated_at FROM cases WHERE case_id=?", (case_id,))
+        cur.execute(
+            "SELECT case_id, name, description, created_at, updated_at FROM cases WHERE case_id=?",
+            (case_id,),
+        )
         row = cur.fetchone()
         if not row:
             return None
@@ -130,7 +137,9 @@ def get_case(case_id: str) -> Optional[Case]:
         )
         for addr, risk, entity, tags_json in cur.fetchall():
             tags = json.loads(tags_json) if tags_json else []
-            case.addresses.append(Address(address=addr, risk_score=risk, entity=entity, tags=tags))
+            case.addresses.append(
+                Address(address=addr, risk_score=risk, entity=entity, tags=tags)
+            )
 
         cur.execute(
             "SELECT tx_id, block_height, asset_id, amount, address, timestamp FROM case_transactions WHERE case_id=?",
@@ -190,4 +199,3 @@ def add_transactions(case_id: str, txs: Iterable[Transaction]) -> int:
         cur.execute("UPDATE cases SET updated_at=? WHERE case_id=?", (now, case_id))
         c.commit()
     return count
-

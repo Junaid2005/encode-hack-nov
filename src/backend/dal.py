@@ -13,7 +13,9 @@ class HyperSyncError(Exception):
 class HyperSyncClient:
     """Thin client for Envio HyperSync /query endpoint."""
 
-    def __init__(self, settings: Settings, session: Optional[requests.Session] = None) -> None:
+    def __init__(
+        self, settings: Settings, session: Optional[requests.Session] = None
+    ) -> None:
         self.settings = settings
         self.session = session or requests.Session()
 
@@ -29,7 +31,9 @@ class HyperSyncClient:
         """Return full payload including meta fields like next_block, archive_height, etc."""
         return self._post(query)
 
-    def paginate(self, base_query: Dict[str, Any], *, max_pages: int = 10) -> Iterator[Dict[str, Any]]:
+    def paginate(
+        self, base_query: Dict[str, Any], *, max_pages: int = 10
+    ) -> Iterator[Dict[str, Any]]:
         """Iterate through paginated results using next_block if present.
 
         This mirrors the time-window behavior described in context.txt: each response
@@ -39,7 +43,9 @@ class HyperSyncClient:
         for _ in range(max_pages):
             payload = self._post(q)
             yield payload
-            next_block = payload.get("next_block") or (payload.get("meta") or {}).get("next_block")
+            next_block = payload.get("next_block") or (payload.get("meta") or {}).get(
+                "next_block"
+            )
             if next_block is None:
                 break
             q["from_block"] = int(next_block)

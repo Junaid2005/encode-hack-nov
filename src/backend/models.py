@@ -18,7 +18,7 @@ class Transaction(BaseModel):
 class Address(BaseModel):
     address: str
     risk_score: Optional[float] = None  # 0.0 (low) .. 1.0 (high)
-    entity: Optional[str] = None        # Known entity name if resolved
+    entity: Optional[str] = None  # Known entity name if resolved
     tags: List[str] = Field(default_factory=list)
 
 
@@ -30,4 +30,3 @@ class Case(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     addresses: List[Address] = Field(default_factory=list)
     transactions: List[Transaction] = Field(default_factory=list)
-
