@@ -10,6 +10,8 @@ from openai import OpenAI
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+import pandas as pd
+import numpy as np
 
 # Add the backend directory to the path
 backend_path = os.path.join(os.path.dirname(__file__), '..', 'backend')
@@ -85,22 +87,43 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if prompt := st.chat_input("What is up?"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+col1, col2 = st.columns([0.7, 0.3])
+with col1:
+    st.subheader("Fraud in the Market")
+    detect_button = st.button("Detect Fraud")
+    if detect_button:
+        if np.random.random() < 0.5:
+            st.success("Fraud detected!", icon="🚨")
+            st.balloons()
+        else:
+            st.error("No fraud detected.")
+            st.snow()
+        scatter_data = pd.DataFrame({
+            'X': np.random.normal(0, 1, 100),
+            'Y': np.random.normal(0, 1, 100),
+            'Size': np.random.randint(10, 100, 100)
+        })
 
-    with st.chat_message("assistant"):
-        stream = client.chat.completions.create(
-            model=st.session_state["openai_model"],
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
-        )
-        response = st.write_stream(stream)
-    st.session_state.messages.append({"role": "assistant", "content": response})
+        st.scatter_chart(scatter_data)
+
+
+with col2:   
+    if prompt := st.chat_input("How can I help you today?"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            stream = client.chat.completions.create(
+                model=st.session_state["openai_model"],
+                messages=[
+                    {"role": m["role"], "content": m["content"]}
+                    for m in st.session_state.messages
+                ],
+                stream=True,
+            )
+            response = st.write_stream(stream)
+        st.session_state.messages.append({"role": "assistant", "content": response})
 
 # Show env status for the HyperSync token
 _token = st.secrets["HYPERSYNC_API_TOKEN"] or st.secrets["hypersync_api_token"]
