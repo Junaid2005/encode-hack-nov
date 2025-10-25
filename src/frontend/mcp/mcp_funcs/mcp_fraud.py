@@ -549,7 +549,9 @@ def wallet_activity(
         raise ValueError(
             "Missing 'from_block'. Ask the investigator for a recent starting block or block range before running wallet_activity."
         )
-    wallet_options = _options_from_payload(WalletAnalysisOptions, options) or WalletAnalysisOptions()
+    wallet_options = (
+        _options_from_payload(WalletAnalysisOptions, options) or WalletAnalysisOptions()
+    )
     result = analyze_wallet_activity(
         address_list,
         from_block=start_block,
@@ -639,15 +641,23 @@ def wallet_activity(
         lines.append("")
 
     lines.append("#### 5. Recommended next steps")
-    lines.append("- ✅ Identify the token contracts behind the largest transfers to size actual USD exposure.")
-    lines.append("- ✅ Trace the outlier transactions and top counterparties to confirm deposit/withdrawal or bridge behavior.")
-    lines.append("- ✅ Cross-reference counterparties against watchlists (mixers, sanctioned addresses, exchanges).")
-    lines.append("- ✅ Extend the block window to build a richer baseline or monitor ongoing flows.")
+    lines.append(
+        "- ✅ Identify the token contracts behind the largest transfers to size actual USD exposure."
+    )
+    lines.append(
+        "- ✅ Trace the outlier transactions and top counterparties to confirm deposit/withdrawal or bridge behavior."
+    )
+    lines.append(
+        "- ✅ Cross-reference counterparties against watchlists (mixers, sanctioned addresses, exchanges)."
+    )
+    lines.append(
+        "- ✅ Extend the block window to build a richer baseline or monitor ongoing flows."
+    )
     lines.append("")
 
     lines.append("#### 6. Evidence snapshot")
-    high_alerts = sum(1 for a in alerts if str(a.get('severity', '')).lower() == 'high')
-    unique_cps = (metrics_payload.get('counterparties') or {}).get('counterparties')
+    high_alerts = sum(1 for a in alerts if str(a.get("severity", "")).lower() == "high")
+    unique_cps = (metrics_payload.get("counterparties") or {}).get("counterparties")
     unique_count = len(unique_cps) if unique_cps else 0
     lines.append(
         f"- Alerts: **{len(alerts)}** (High: **{high_alerts}**), transfers analyzed: **{summary.get('total_logs')}**, unique counterparties: **{unique_count}**."

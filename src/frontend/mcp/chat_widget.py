@@ -366,7 +366,10 @@ class ChatWidget:
             st.session_state["sniffer_spinner_css_injected"] = True
         chat_container = st.container()
         with chat_container:
-            st.markdown("<div id='sniffer-chat-wrapper'><div id='sniffer-chat-log'>", unsafe_allow_html=True)
+            st.markdown(
+                "<div id='sniffer-chat-wrapper'><div id='sniffer-chat-log'>",
+                unsafe_allow_html=True,
+            )
             for message in st.session_state.messages:
                 if isinstance(message, dict):
                     role = message["role"]
@@ -403,7 +406,10 @@ class ChatWidget:
                                 except Exception:
                                     st.warning("Unable to display Sniffer visual.")
                             st.markdown(message["content"])
-            st.markdown("<div id='sniffer-chat-sentinel'></div></div></div>", unsafe_allow_html=True)
+            st.markdown(
+                "<div id='sniffer-chat-sentinel'></div></div></div>",
+                unsafe_allow_html=True,
+            )
 
     def chat_with_tools(self):
         """Handle chat with tool calling"""
@@ -487,14 +493,12 @@ class ChatWidget:
 
                     if message.content:
                         stage_placeholder.empty()
-                        visual_markup = (
-                            f"""
+                        visual_markup = f"""
                             <div class="sniffer-visual">
                                 <img style="width: {self.image_display_width}px; max-width: 100%; height: auto;" src="data:image/png;base64,{self.image_happy_b64}" alt="Sniffer reports ready" />
                                 <div class="sniffer-stage-caption">📬 <span>Sniffer</span> fetched the findings — report ready for review.</div>
                             </div>
                             """
-                        )
                         st.markdown(visual_markup, unsafe_allow_html=True)
                         st.markdown(message.content)
                         st.session_state.messages.append(
