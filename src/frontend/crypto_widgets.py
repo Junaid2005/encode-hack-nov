@@ -14,7 +14,7 @@ def show_crypto_data():
     try:
         fetcher = CryptoDataFetcher()
         crypto_data = fetcher.get_multiple_crypto_prices(
-            ["BTC", "ETH", "SOL", "SPY", "USD/GBP"]
+            ["BTC", "ETH", "SOL", "SPY"]
         )
         # print(crypto_data)
 
