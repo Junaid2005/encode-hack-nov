@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from crypto_widgets import show_crypto_data
-from chat_widget import ChatWidget
+from mcp.chat_widget import ChatWidget
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -50,6 +50,7 @@ st.set_page_config(
     page_title="Sniffer",
     page_icon="🐕",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
 st.title("Sniffer 🐕")
@@ -57,7 +58,9 @@ st.caption("Sniff out suspicious activity on the blockchain 🔎")
 
 show_crypto_data()
 
-chat_widget = ChatWidget(api_key=st.secrets["OPENAI_API_KEY"])
+chat_widget = ChatWidget(
+    api_key=st.secrets["OPENAI_API_KEY"],
+)
 chat_widget.render()
 
 # Show env status for the HyperSync token
@@ -294,7 +297,9 @@ with tab_wallet:
                             st.json(_sanitize_large_ints(filtered_patterns))
 
                         watched = counterparty_summary.get("watched") or []
-                        counterparties = counterparty_summary.get("counterparties") or []
+                        counterparties = (
+                            counterparty_summary.get("counterparties") or []
+                        )
                         if watched:
                             st.markdown("**Watched address summary**")
                             st.dataframe(pd.DataFrame(watched))
@@ -441,7 +446,9 @@ with tab_event_logs:
                             with col_large:
                                 st.metric("Large transfers", len(large_transfers))
                             with col_cent:
-                                st.metric("High-degree addresses", len(central_addresses))
+                                st.metric(
+                                    "High-degree addresses", len(central_addresses)
+                                )
 
                             if anomalies:
                                 st.markdown("**Anomaly details**")
@@ -592,7 +599,8 @@ with tab_tx:
                     _emit_summary("Transactions", result["transactions"])
                     if tx_enable_decoding and result["transactions"]:
                         decoded_txs = decode_transaction_methods(
-                            result["transactions"], known_selectors=KNOWN_METHOD_SELECTORS
+                            result["transactions"],
+                            known_selectors=KNOWN_METHOD_SELECTORS,
                         )
                         watchlist = _split_addresses(tx_watchlist)
                         large_threshold_value = _parse_int(

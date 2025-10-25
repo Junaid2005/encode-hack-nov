@@ -430,7 +430,9 @@ def fetch_swap_events(
         if topic0.lower() == ERC20_TRANSFER_TOPIC:
             decoder = hypersync.Decoder([TRANSFER_EVENT_SIGNATURE])
             decoded = await decoder.decode_logs(result.data.logs)
-            decoded_logs = [_decoded_event_to_dict(ev) for ev in decoded if ev is not None]
+            decoded_logs = [
+                _decoded_event_to_dict(ev) for ev in decoded if ev is not None
+            ]
         return {
             "next_block": result.next_block,
             "archive_height": result.archive_height,
