@@ -1,0 +1,32 @@
+import streamlit as st
+from crypto_widgets import show_crypto_data
+from mcp.chat_widget import ChatWidget
+import time
+
+
+def stream_data(text):
+    for letter in text:
+        yield letter
+        time.sleep(0.01)
+
+
+st.set_page_config(
+    page_title="Sniffer Core",
+    page_icon="🐶",
+    layout="wide",
+)
+
+st.title("Sniffer Core 🐕")
+if not st.session_state.get("sniffer_core_visited", False):
+    st.session_state["sniffer_core_visited"] = True
+    st.write_stream(stream_data("Sniff out suspicious activity on the blockchain! 🔎"))
+else:
+    st.write("Sniff out suspicious activity on the blockchain! 🔎")
+
+with st.spinner("Fetching market context..."):
+    show_crypto_data()
+
+chat_widget = ChatWidget(
+    api_key=st.secrets["OPENAI_API_KEY"],
+)
+chat_widget.render()
