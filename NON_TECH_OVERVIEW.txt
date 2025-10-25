@@ -1,0 +1,35 @@
+Sniffer in Plain Language
+=========================
+
+Imagine an investigation desk with three teammates:
+
+1. Sniffer the canine detective (the chat window)
+   - You tell Sniffer which wallets, contracts, pools, or transactions you are curious about.
+   - Sniffer double-checks what you mean and asks the rest of the team for evidence before answering.
+   - Sniffer then returns with a friendly briefing, highlights of anything odd, and suggestions on where to dig next.
+
+2. The research analysts (the backend tools)
+   - They pull blockchain records from HyperSync, a service that stores Ethereum history.
+   - They look for warning signs: sudden price jumps, unusually large transfers, wallets talking to themselves, or two addresses trading back and forth too neatly.
+   - For each red flag they file a short alert with a severity label (low, medium, high).
+
+3. The data intern (the Streamlit dashboard)
+   - Keeps the office organized, showing the Sniffer logo, live market stats, and the chat interface in a simple web page.
+   - Converts the analysts’ findings into easy tables, charts, and summaries so you can read them at a glance.
+
+How a typical request flows
+---------------------------
+1. You enter a question in the chat, such as “Check these wallet addresses” or “Explain this transaction hash.”
+2. Sniffer decides which analyst should look into it (wallet review, event log sweep, swap surveillance, or single transaction check).
+3. The chosen analyst gathers raw blockchain data from HyperSync and runs their fraud sniffing playbook.
+4. The analyst sends back a report with alerts, metrics, and raw excerpts.
+5. Sniffer rewrites the findings in plain language, adds any charts, and presents the report in the chat conversation.
+
+Extra touches
+-------------
+- Sniffer asks for missing details (like block ranges) before running a search so the results stay focused.
+- If the system spots something suspicious, it shows higher-severity alerts first, along with a suggested follow-up.
+- Friendly dog images change with each stage—thinking, investigating, celebrating a finished report.
+
+In short: you describe what you want to investigate, Sniffer coordinates with the data team, and you get a clean, story-style summary of any suspicious blockchain behavior.
+
