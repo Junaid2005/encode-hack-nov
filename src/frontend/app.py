@@ -1,9 +1,9 @@
+import json
 import os
 import sys
 from pathlib import Path
 from typing import List, Mapping
 from openai import OpenAI
-import numpy as np
 import pandas as pd
 import streamlit as st
 from crypto_widgets import show_crypto_data
@@ -14,21 +14,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backend import (
-    analyze_swap_price_impact,
-    collect_wallet_activity,
-    compute_address_centrality,
-    decode_transaction_methods,
-    detect_large_transfers,
-    detect_suspicious_patterns,
-    detect_swap_wash_trades,
-    detect_value_anomalies,
-    fetch_contract_logs,
-    fetch_event_logs,
-    fetch_swap_events,
-    fetch_transaction_by_hash,
-    label_transaction_risk,
-    score_wallet_activity,
-    summarize_counterparties,
+    analyze_event_logs,
+    analyze_swap_events,
+    analyze_transaction,
+    analyze_wallet_activity,
+    EventAnalysisOptions,
+    SwapAnalysisOptions,
+    TransactionAnalysisOptions,
+    WalletAnalysisOptions,
     top_token_senders,
 )
 
@@ -119,6 +112,28 @@ def _prepare_scores_table(records: List[Mapping]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _to_arrow_safe_dataframe(records: List[Mapping]) -> pd.DataFrame:
+    sanitized = _sanitize_large_ints(records)
+    df = pd.DataFrame(sanitized)
+    for column in df.columns:
+        series = df[column]
+        has_str = series.map(lambda v: isinstance(v, str)).any()
+        has_bytes = series.map(lambda v: isinstance(v, (bytes, bytearray))).any()
+        has_int = series.map(lambda v: isinstance(v, int)).any()
+        has_mapping = series.map(lambda v: isinstance(v, Mapping)).any()
+        has_sequence = series.map(lambda v: isinstance(v, (list, tuple))).any()
+        if has_mapping or has_sequence:
+            df[column] = series.map(
+                lambda v: json.dumps(v) if isinstance(v, (Mapping, list, tuple)) else v
+            )
+        if has_str and has_int:
+            df[column] = series.map(lambda v: str(v) if isinstance(v, int) else v)
+        if has_bytes:
+            df[column] = series.map(lambda v: v.decode("utf-8") if isinstance(v, (bytes, bytearray)) else v)
+        df[column] = df[column].astype(str)
+    return df
+
+
 HYPERSYNC_URL = "http://eth.hypersync.xyz/"
 TOKEN = st.secrets["HYPERSYNC_API_TOKEN"] or st.secrets["hypersync_api_token"]
 
@@ -134,26 +149,20 @@ with st.sidebar:
 
 st.header("Available Tools")
 
-(
-    tab_wallet,
-    tab_contract_logs,
-    tab_event_logs,
-    tab_swap,
-    tab_tx,
-    tab_top,
-) = st.tabs(
+tab_wallet, tab_event_logs, tab_swap, tab_tx = st.tabs(
     [
         "Wallet Activity",
-        "Contract Logs",
         "Event Logs",
         "Swap Events",
         "Tx Lookup",
-        "Top Token Senders",
     ]
 )
 
 with tab_wallet:
     st.subheader("Collect wallet activity")
+    st.caption(
+        "Purpose: investigate specific wallets by pulling complete transfer history, heuristics, baselines, and AI-ready alerts."
+    )
     wallet_addresses = st.text_area(
         "Wallet addresses",
         placeholder="Enter addresses separated by commas or new lines",
@@ -191,6 +200,36 @@ with tab_wallet:
         step=1,
         key="wallet_min_degree",
     )
+    wallet_baseline_window = st.number_input(
+        "Baseline window (transfers)",
+        min_value=1,
+        value=20,
+        step=1,
+        key="wallet_baseline_window",
+    )
+    wallet_trend_window = st.number_input(
+        "Trend window (transfers)",
+        min_value=5,
+        value=30,
+        step=5,
+        key="wallet_trend_window",
+    )
+    wallet_trend_z_threshold = st.number_input(
+        "Trend z-score threshold",
+        min_value=1.0,
+        max_value=10.0,
+        value=3.0,
+        step=0.5,
+        key="wallet_trend_z_threshold",
+    )
+    wallet_trend_cusum_limit = st.number_input(
+        "Trend CUSUM limit",
+        min_value=1.0,
+        max_value=50.0,
+        value=5.0,
+        step=0.5,
+        key="wallet_trend_cusum_limit",
+    )
     wallet_include_self = st.checkbox(
         "Highlight self-transfers",
         value=True,
@@ -209,135 +248,74 @@ with tab_wallet:
         else:
             with st.spinner("Querying HyperSync..."):
                 try:
-                    result = collect_wallet_activity(
+                    result = analyze_wallet_activity(
                         addresses,
                         from_block=int(wallet_from_block),
                         transfer_topic=wallet_topic or ERC20_TRANSFER_TOPIC,
+                        options=WalletAnalysisOptions(
+                            z_threshold=float(wallet_z_threshold),
+                            large_transfer_threshold=_parse_int(
+                                wallet_large_threshold, int(1e18)
+                            ),
+                            min_centrality_degree=int(wallet_min_degree),
+                            include_self_transfers=wallet_include_self,
+                            include_zero_value=wallet_include_zero,
+                            baseline_window=int(wallet_baseline_window),
+                            trend_window=int(wallet_trend_window),
+                            trend_z_threshold=float(wallet_trend_z_threshold),
+                            trend_cusum_limit=float(wallet_trend_cusum_limit),
+                        ),
                     )
                 except Exception as exc:  # pragma: no cover - UI feedback
                     st.exception(exc)
                 else:
+                    summary = result.get("summary", {})
                     st.success(
-                        f"Next block {result['next_block']} (archive height {result['archive_height']})"
+                        f"Next block {summary.get('next_block')} (archive height {summary.get('archive_height')})"
                     )
-                    st.json(
-                        {
-                            "addresses": addresses,
-                            "erc20_volume": result["erc20_volume"],
-                            "wei_volume": result["wei_volume"],
-                            "logs_returned": len(result["logs"]),
-                            "transactions_returned": len(result["transactions"]),
-                            "blocks_returned": len(result["blocks"]),
-                        }
-                    )
-                    decoded_events = result.get("decoded_logs") or []
-                    if decoded_events and wallet_enable_overlay:
-                        st.markdown("**Fraud analytics overlay**")
-                        anomalies = detect_value_anomalies(
-                            decoded_events, z_threshold=float(wallet_z_threshold)
-                        )
-                        large_threshold_value = _parse_int(
-                            wallet_large_threshold, int(1e18)
-                        )
-                        large_transfers = detect_large_transfers(
-                            decoded_events, min_value=large_threshold_value
-                        )
-                        central_addresses = compute_address_centrality(
-                            decoded_events, min_degree=int(wallet_min_degree)
-                        )
-                        suspicious = detect_suspicious_patterns(decoded_events)
-                        filtered_patterns = []
-                        for finding in suspicious:
-                            if (
-                                finding.get("type") == "self_transfer"
-                                and wallet_include_self
-                            ):
-                                filtered_patterns.append(finding)
-                            if (
-                                finding.get("type") == "zero_value"
-                                and wallet_include_zero
-                            ):
-                                filtered_patterns.append(finding)
+                    st.json(_sanitize_large_ints(summary))
 
-                        scores = score_wallet_activity(
-                            addresses,
-                            anomalies,
-                            large_transfers,
-                            central_addresses,
-                        )
-                        counterparty_summary = summarize_counterparties(
-                            decoded_events, addresses
-                        )
+                    verdict = summary.get("verdict", "clear").title()
+                    severity = summary.get("severity", "low").title()
+                    st.metric("Fraud verdict", verdict, severity)
 
-                        col_anom, col_large, col_cent = st.columns(3)
-                        with col_anom:
-                            st.metric("Anomalous transfers", len(anomalies))
-                        with col_large:
-                            st.metric("Large transfers", len(large_transfers))
-                        with col_cent:
-                            st.metric("High-degree addresses", len(central_addresses))
+                    alerts = result.get("alerts", [])
+                    metrics = result.get("metrics", {})
+                    raw = result.get("raw", {})
 
+                    if alerts and wallet_enable_overlay:
+                        st.markdown("**Alerts**")
+                        st.dataframe(_to_arrow_safe_dataframe(alerts))
+
+                    if metrics.get("risk_scores"):
                         st.markdown("**Risk scores**")
-                        st.dataframe(_prepare_scores_table(scores))
-
-                        if anomalies:
-                            st.markdown("**Anomaly details**")
-                            st.json(_sanitize_large_ints(anomalies))
-
-                        if large_transfers:
-                            st.markdown("**Large transfers**")
-                            st.json(_sanitize_large_ints(large_transfers))
-
-                        if central_addresses:
-                            st.markdown("**Address centrality (degree)**")
-                            st.dataframe(pd.DataFrame(central_addresses))
-
-                        if filtered_patterns:
-                            st.markdown("**Suspicious heuristics**")
-                            st.json(_sanitize_large_ints(filtered_patterns))
-
-                        watched = counterparty_summary.get("watched") or []
-                        counterparties = (
-                            counterparty_summary.get("counterparties") or []
+                        st.dataframe(
+                            _prepare_scores_table(metrics.get("risk_scores", []))
                         )
-                        if watched:
-                            st.markdown("**Watched address summary**")
-                            st.dataframe(pd.DataFrame(watched))
-                        if counterparties:
-                            st.markdown("**Top counterparties**")
-                            st.dataframe(pd.DataFrame(counterparties).head(10))
 
-with tab_contract_logs:
-    st.subheader("Fetch contract logs")
-    contract_address = st.text_input("Contract address", placeholder="0x...")
-    contract_start = st.number_input(
-        "Start block", min_value=0, value=17_000_000, step=1, key="cl_start"
-    )
-    contract_end = st.number_input(
-        "End block", min_value=0, value=17_000_050, step=1, key="cl_end"
-    )
+                    if metrics.get("baselines"):
+                        st.markdown("**Wallet baselines**")
+                        st.dataframe(_to_arrow_safe_dataframe(metrics["baselines"]))
 
-    if st.button("Fetch logs", key="contract_logs"):
-        if not contract_address:
-            st.warning("Enter the contract address.")
-        else:
-            with st.spinner("Fetching logs..."):
-                try:
-                    result = fetch_contract_logs(
-                        contract_address.strip(),
-                        start_block=int(contract_start),
-                        end_block=int(contract_end),
-                    )
-                except Exception as exc:
-                    st.exception(exc)
-                else:
-                    st.success(
-                        f"Returned {len(result['logs'])} log record(s). Next block {result['next_block']}."
-                    )
-                    _emit_summary("Logs", result["logs"])
+                    counterparties = metrics.get("counterparties") or {}
+                    watched = counterparties.get("watched") or []
+                    top_counterparties = counterparties.get("counterparties") or []
+                    if watched:
+                        st.markdown("**Watched address summary**")
+                        st.dataframe(_to_arrow_safe_dataframe(watched))
+                    if top_counterparties:
+                        st.markdown("**Top counterparties**")
+                        st.dataframe(_to_arrow_safe_dataframe(top_counterparties).head(10))
+
+                    if raw.get("decoded_logs") and wallet_enable_overlay:
+                        st.markdown("**Decoded logs**")
+                        st.json(_sanitize_large_ints(raw["decoded_logs"]))
 
 with tab_event_logs:
     st.subheader("Fetch event logs")
+    st.caption(
+        "Purpose: monitor targeted event signatures (ERC-20 transfers, custom emitters) and surface anomaly overlays for watchlisted contracts."
+    )
     event_contract = st.text_input(
         "Contract address", placeholder="0x...", key="event_contract"
     )
@@ -378,6 +356,36 @@ with tab_event_logs:
         step=1,
         key="event_min_degree",
     )
+    event_baseline_window = st.number_input(
+        "Baseline window (events)",
+        min_value=1,
+        value=20,
+        step=1,
+        key="event_baseline_window",
+    )
+    event_trend_window = st.number_input(
+        "Trend window (events)",
+        min_value=5,
+        value=30,
+        step=5,
+        key="event_trend_window",
+    )
+    event_trend_z_threshold = st.number_input(
+        "Trend z-score threshold",
+        min_value=1.0,
+        max_value=10.0,
+        value=3.0,
+        step=0.5,
+        key="event_trend_z_threshold",
+    )
+    event_trend_cusum_limit = st.number_input(
+        "Trend CUSUM limit",
+        min_value=1.0,
+        max_value=50.0,
+        value=5.0,
+        step=0.5,
+        key="event_trend_cusum_limit",
+    )
     event_include_self = st.checkbox(
         "Highlight self-transfers",
         value=True,
@@ -395,79 +403,61 @@ with tab_event_logs:
         else:
             with st.spinner("Fetching event logs..."):
                 try:
-                    result = fetch_event_logs(
+                    result = analyze_event_logs(
                         event_contract.strip(),
                         topic0=event_topic or ERC20_TRANSFER_TOPIC,
                         start_block=int(event_start),
                         end_block=int(event_end),
+                        options=EventAnalysisOptions(
+                            z_threshold=float(event_z_threshold),
+                            large_transfer_threshold=_parse_int(
+                                event_large_threshold, int(1e18)
+                            ),
+                            min_centrality_degree=int(event_min_degree),
+                            baseline_window=int(event_baseline_window),
+                            trend_window=int(event_trend_window),
+                            trend_z_threshold=float(event_trend_z_threshold),
+                            trend_cusum_limit=float(event_trend_cusum_limit),
+                            include_self_transfers=event_include_self,
+                            include_zero_value=event_include_zero,
+                        ),
                     )
                 except Exception as exc:
                     st.exception(exc)
                 else:
+                    summary = result.get("summary", {})
                     st.success(
-                        f"Returned {len(result['logs'])} event log(s). Next block {result['next_block']}"
+                        f"Returned {summary.get('total_logs', 0)} event log(s). Next block {summary.get('next_block')}"
                     )
-                    _emit_summary("Logs", result["logs"])
-                    if result.get("decoded_logs"):
-                        _emit_summary("Decoded logs", result["decoded_logs"])
-                        if event_enable_overlay:
-                            decoded_events = result["decoded_logs"]
-                            st.markdown("**Fraud analytics overlay**")
-                            anomalies = detect_value_anomalies(
-                                decoded_events, z_threshold=float(event_z_threshold)
-                            )
-                            large_threshold_value = _parse_int(
-                                event_large_threshold, int(1e18)
-                            )
-                            large_transfers = detect_large_transfers(
-                                decoded_events, min_value=large_threshold_value
-                            )
-                            central_addresses = compute_address_centrality(
-                                decoded_events, min_degree=int(event_min_degree)
-                            )
-                            suspicious = detect_suspicious_patterns(decoded_events)
+                    st.json(_sanitize_large_ints(summary))
 
-                            filtered_patterns = []
-                            for finding in suspicious:
-                                if (
-                                    finding.get("type") == "self_transfer"
-                                    and event_include_self
-                                ):
-                                    filtered_patterns.append(finding)
-                                if (
-                                    finding.get("type") == "zero_value"
-                                    and event_include_zero
-                                ):
-                                    filtered_patterns.append(finding)
+                    verdict = summary.get("verdict", "clear").title()
+                    severity = summary.get("severity", "low").title()
+                    st.metric("Fraud verdict", verdict, severity)
 
-                            col_anom, col_large, col_cent = st.columns(3)
-                            with col_anom:
-                                st.metric("Anomalous transfers", len(anomalies))
-                            with col_large:
-                                st.metric("Large transfers", len(large_transfers))
-                            with col_cent:
-                                st.metric(
-                                    "High-degree addresses", len(central_addresses)
-                                )
+                    alerts = result.get("alerts", [])
+                    metrics = result.get("metrics", {})
+                    raw = result.get("raw", {})
 
-                            if anomalies:
-                                st.markdown("**Anomaly details**")
-                                st.json(_sanitize_large_ints(anomalies))
+                    if alerts and event_enable_overlay:
+                        st.markdown("**Alerts**")
+                        st.dataframe(_to_arrow_safe_dataframe(alerts).head(25))
 
-                            if large_transfers:
-                                st.markdown("**Large transfers**")
-                                st.json(_sanitize_large_ints(large_transfers))
+                    if metrics.get("baselines"):
+                        st.markdown("**Wallet baselines**")
+                        st.dataframe(_to_arrow_safe_dataframe(metrics["baselines"]).head(15))
 
-                            if central_addresses:
-                                st.markdown("**Address centrality (degree)**")
-                                st.dataframe(pd.DataFrame(central_addresses))
+                    if raw.get("logs"):
+                        _emit_summary("Logs", raw["logs"])
 
-                            if filtered_patterns:
-                                st.markdown("**Suspicious heuristics**")
-                                st.json(_sanitize_large_ints(filtered_patterns))
+                    if raw.get("decoded_logs") and event_enable_overlay:
+                        _emit_summary("Decoded logs", raw["decoded_logs"])
 
 with tab_swap:
     st.subheader("Fetch swap events")
+    st.caption(
+        "Purpose: examine liquidity pool activity to spot unusual price impact or wash-trade patterns in AMM swaps."
+    )
     pool_address = st.text_input(
         "Pool contract address", placeholder="0x...", key="swap_pool"
     )
@@ -520,43 +510,45 @@ with tab_swap:
         else:
             with st.spinner("Fetching swap logs..."):
                 try:
-                    result = fetch_swap_events(
+                    result = analyze_swap_events(
                         pool_address.strip(),
                         topic0=swap_topic,
                         start_block=int(swap_start),
                         end_block=int(swap_end),
+                        options=SwapAnalysisOptions(
+                            min_price_delta_bps=float(swap_min_bps),
+                            min_notional=_parse_int(swap_min_notional, 0),
+                            wash_trade_threshold=int(swap_max_swaps),
+                        ),
                     )
                 except Exception as exc:
                     st.exception(exc)
                 else:
+                    summary = result.get("summary", {})
                     st.success(
-                        f"Returned {len(result['logs'])} swap log(s). Next block {result['next_block']}"
+                        f"Returned {summary.get('total_logs', 0)} swap log(s). Next block {summary.get('next_block')}"
                     )
-                    _emit_summary("Logs", result["logs"])
-                    decoded_events = result.get("decoded_logs") or []
-                    if swap_enable_overlay and decoded_events:
-                        min_notional_value = _parse_int(swap_min_notional, 0)
-                        price_impacts = analyze_swap_price_impact(
-                            decoded_events,
-                            min_price_delta_bps=float(swap_min_bps),
-                            min_notional=min_notional_value,
-                        )
-                        st.markdown("**Swap price impact**")
-                        st.metric("High-impact swaps", len(price_impacts))
-                        if price_impacts:
-                            st.json(_sanitize_large_ints(price_impacts))
+                    st.json(_sanitize_large_ints(summary))
 
-                        if swap_detect_cycles:
-                            wash_trades = detect_swap_wash_trades(
-                                decoded_events, max_swaps=int(swap_max_swaps)
-                            )
-                            st.markdown("**Wash trade signals**")
-                            st.metric("Suspicious pairs", len(wash_trades))
-                            if wash_trades:
-                                st.json(_sanitize_large_ints(wash_trades))
+                    verdict = summary.get("verdict", "clear").title()
+                    severity = summary.get("severity", "low").title()
+                    st.metric("Fraud verdict", verdict, severity)
+
+                    alerts = result.get("alerts", [])
+                    raw = result.get("raw", {})
+
+                    if alerts:
+                        st.markdown("**Alerts**")
+                        st.dataframe(_to_arrow_safe_dataframe(alerts).head(25))
+
+                    if raw.get("logs"):
+                        _emit_summary("Logs", raw["logs"])
 
 with tab_tx:
     st.subheader("Lookup transaction by hash")
+    st.caption(
+        "Purpose: fetch full transaction payloads, decode selectors, and apply risk heuristics for single-hash investigations."
+    )
     tx_hash_value = st.text_input("Transaction hash", placeholder="0x...")
     tx_from_block = st.number_input(
         "Start block", min_value=0, value=0, step=1, key="tx_from_block"
@@ -585,64 +577,41 @@ with tab_tx:
         else:
             with st.spinner("Fetching transaction..."):
                 try:
-                    result = fetch_transaction_by_hash(
+                    result = analyze_transaction(
                         tx_hash_value.strip(),
                         from_block=int(tx_from_block),
+                        options=TransactionAnalysisOptions(
+                            decode_methods=tx_enable_decoding,
+                            large_value_threshold=_parse_int(
+                                tx_large_threshold, int(1e20)
+                            ),
+                            watchlist=_split_addresses(tx_watchlist),
+                        ),
                     )
                 except Exception as exc:
                     st.exception(exc)
                 else:
-                    count = len(result["transactions"])
+                    summary = result.get("summary", {})
                     st.success(
-                        f"Returned {count} transaction record(s). Next block {result['next_block']}"
+                        f"Returned {summary.get('total_transactions', 0)} transaction record(s). Next block {summary.get('next_block')}"
                     )
-                    _emit_summary("Transactions", result["transactions"])
-                    if tx_enable_decoding and result["transactions"]:
-                        decoded_txs = decode_transaction_methods(
-                            result["transactions"],
-                            known_selectors=KNOWN_METHOD_SELECTORS,
-                        )
-                        watchlist = _split_addresses(tx_watchlist)
-                        large_threshold_value = _parse_int(
-                            tx_large_threshold, int(1e20)
-                        )
-                        enriched = label_transaction_risk(
-                            decoded_txs,
-                            watchlist=watchlist,
-                            large_value_threshold=large_threshold_value,
-                        )
+                    st.json(_sanitize_large_ints(summary))
+
+                    verdict = summary.get("verdict", "clear").title()
+                    severity = summary.get("severity", "low").title()
+                    st.metric("Fraud verdict", verdict, severity)
+
+                    alerts = result.get("alerts", [])
+                    data = result.get("data", [])
+                    raw = result.get("raw", {})
+
+                    if alerts:
+                        st.markdown("**Alerts**")
+                        st.dataframe(_to_arrow_safe_dataframe(alerts))
+
+                    if data and tx_enable_decoding:
                         st.markdown("**Decoded transactions**")
-                        st.json(_sanitize_large_ints(enriched))
+                        st.dataframe(_to_arrow_safe_dataframe(data))
 
-with tab_top:
-    st.subheader("Top token senders")
-    top_contract = st.text_input("Token contract", placeholder="0x...")
-    top_window = st.number_input(
-        "Blocks to look back", min_value=1, value=int(1e4), step=1, key="top_window"
-    )
-    top_topic = st.text_input(
-        "Transfer event topic0",
-        value=ERC20_TRANSFER_TOPIC,
-        key="top_topic",
-    )
-    top_n = st.number_input("Top N", min_value=1, value=10, step=1, key="top_n")
-
-    if st.button("Rank senders", key="top_senders"):
-        if not top_contract:
-            st.warning("Enter the token contract address.")
-        else:
-            with st.spinner("Ranking senders..."):
-                try:
-                    result = top_token_senders(
-                        top_contract.strip(),
-                        window_blocks=int(top_window),
-                        topic0=top_topic or ERC20_TRANSFER_TOPIC,
-                        top_n=int(top_n),
-                    )
-                except Exception as exc:
-                    st.exception(exc)
-                else:
-                    st.success(
-                        f"Calculated top {len(result['leaders'])} sender(s). Next block {result['next_block']}."
-                    )
-                    st.dataframe(result["leaders"])
+                    if raw.get("transactions"):
+                        _emit_summary("Transactions", raw["transactions"])
