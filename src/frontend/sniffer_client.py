@@ -22,6 +22,151 @@ from src.backend import (
     top_token_senders,
 )
 
+WEI_PER_ETH = float(10**18)
+_NUMERIC_SANITIZE = re.compile(r"[,_\s]")
+
+# ---------------------------------------------------------------------------
+# Helper utilities for numeric coercion and chart rendering
+
+
+def _coerce_float(value):
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        candidate = _NUMERIC_SANITIZE.sub("", value.strip())
+        if not candidate:
+            return None
+        try:
+            return float(candidate)
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_int(value):
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    coerced = _coerce_float(value)
+    if coerced is None:
+        return None
+    return int(coerced)
+
+
+def _render_summary_visuals(summary):
+    if not isinstance(summary, Mapping):
+        return
+    entries = []
+    for key, label in [
+        ("total_logs", "Logs analyzed"),
+        ("total_transactions", "Transactions"),
+    ]:
+        value = _coerce_int(summary.get(key))
+        if value is not None:
+            entries.append({"metric": label, "count": value})
+    if not entries:
+        return
+    df = pd.DataFrame(entries).set_index("metric")
+    st.markdown("**Scan volume overview**")
+    st.bar_chart(df)
+
+
+def _render_alerts_visuals(alerts):
+    if not alerts:
+        return
+    type_counts: dict[str, int] = {}
+    severity_counts: dict[str, int] = {}
+    verdict_counts: dict[str, int] = {}
+    for alert in alerts:
+        type_name = str(alert.get("type", "unknown")).title()
+        type_counts[type_name] = type_counts.get(type_name, 0) + 1
+        severity = str(alert.get("severity", "unknown")).title()
+        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+        verdict = str(alert.get("verdict", "")).title()
+        if verdict:
+            verdict_counts[verdict] = verdict_counts.get(verdict, 0) + 1
+    if type_counts:
+        df_types = pd.DataFrame(
+            sorted(type_counts.items(), key=lambda kv: kv[1], reverse=True),
+            columns=["Type", "Count"],
+        ).set_index("Type")
+        st.markdown("**Alerts by type**")
+        st.bar_chart(df_types)
+    if severity_counts:
+        df_severity = pd.DataFrame(
+            sorted(severity_counts.items(), key=lambda kv: kv[1], reverse=True),
+            columns=["Severity", "Count"],
+        ).set_index("Severity")
+        st.markdown("**Alerts by severity**")
+        st.bar_chart(df_severity)
+    if verdict_counts:
+        cols = st.columns(len(verdict_counts))
+        for idx, (label, count) in enumerate(sorted(verdict_counts.items())):
+            cols[idx].metric(f"{label} alerts", count)
+
+
+def _render_wallet_visuals(metrics):
+    if not isinstance(metrics, Mapping):
+        return
+    risk_scores = metrics.get("risk_scores") or []
+    risk_rows = []
+    for item in risk_scores[:12]:
+        score = _coerce_float(item.get("score"))
+        if score is None:
+            continue
+        risk_rows.append({"address": item.get("address", "n/a"), "score": score})
+    if risk_rows:
+        st.markdown("**Risk scores**")
+        st.bar_chart(pd.DataFrame(risk_rows).set_index("address"))
+
+    baselines = metrics.get("baselines") or []
+    transfer_rows = []
+    for item in baselines[:12]:
+        count = _coerce_int(item.get("transfer_count"))
+        if count is None:
+            continue
+        transfer_rows.append(
+            {"address": item.get("address", "n/a"), "transfers": count}
+        )
+    if transfer_rows:
+        st.markdown("**Transfers per address**")
+        st.bar_chart(pd.DataFrame(transfer_rows).set_index("address"))
+
+    volume_rows = []
+    for item in baselines[:12]:
+        total_volume = _coerce_float(item.get("total_volume"))
+        if total_volume is None:
+            continue
+        volume_rows.append(
+            {
+                "address": item.get("address", "n/a"),
+                "volume_eth": total_volume / WEI_PER_ETH,
+            }
+        )
+    if volume_rows:
+        st.markdown("**Total volume per address (ETH)**")
+        st.bar_chart(pd.DataFrame(volume_rows).set_index("address"))
+
+    counterparties = (metrics.get("counterparties") or {}).get("counterparties") or []
+    counter_rows = []
+    for item in counterparties[:12]:
+        total_value = _coerce_float(item.get("total_value"))
+        if total_value is None:
+            continue
+        counter_rows.append(
+            {
+                "counterparty": item.get("address", "n/a"),
+                "value_eth": total_value / WEI_PER_ETH,
+            }
+        )
+    if counter_rows:
+        st.markdown("**Top counterparties (ETH)**")
+        st.bar_chart(pd.DataFrame(counter_rows).set_index("counterparty"))
+
+
 ERC20_TRANSFER_TOPIC = (
     "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 )
@@ -96,23 +241,29 @@ def _to_arrow_safe_dataframe(records: List[Mapping]) -> pd.DataFrame:
     df = pd.DataFrame(sanitized)
     for column in df.columns:
         series = df[column]
-        has_str = series.map(lambda v: isinstance(v, str)).any()
-        has_bytes = series.map(lambda v: isinstance(v, (bytes, bytearray))).any()
-        has_int = series.map(lambda v: isinstance(v, int)).any()
-        has_mapping = series.map(lambda v: isinstance(v, Mapping)).any()
-        has_sequence = series.map(lambda v: isinstance(v, (list, tuple))).any()
+        values = series.tolist()
+        has_mapping = any(isinstance(v, Mapping) for v in values)
+        has_sequence = any(isinstance(v, (list, tuple)) for v in values)
+        has_bytes = any(isinstance(v, (bytes, bytearray)) for v in values)
+        has_int = any(isinstance(v, int) for v in values)
+        has_str = any(isinstance(v, str) for v in values)
+
         if has_mapping or has_sequence:
-            df[column] = series.map(
-                lambda v: json.dumps(v) if isinstance(v, (Mapping, list, tuple)) else v
-            )
-        if has_str and has_int:
-            df[column] = series.map(lambda v: str(v) if isinstance(v, int) else v)
+            values = [
+                json.dumps(v) if isinstance(v, (Mapping, list, tuple)) else v
+                for v in values
+            ]
         if has_bytes:
-            df[column] = series.map(
-                lambda v: v.decode("utf-8") if isinstance(v, (bytes, bytearray)) else v
-            )
-        df[column] = df[column].astype(str)
+            values = [
+                v.decode("utf-8") if isinstance(v, (bytes, bytearray)) else v
+                for v in values
+            ]
+        if has_int and has_str:
+            values = [str(v) if isinstance(v, int) else v for v in values]
+
+        df[column] = pd.Series(values, index=df.index, dtype="object").astype(str)
     return df
+
 
 
 st.set_page_config(
