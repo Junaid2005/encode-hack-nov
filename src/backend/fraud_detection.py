@@ -614,7 +614,9 @@ def compute_wallet_baselines(
     *,
     window_size: int = 20,
 ) -> List[Dict[str, Any]]:
-    watched = {addr.lower() for addr in (watched_addresses or []) if isinstance(addr, str)}
+    watched = {
+        addr.lower() for addr in (watched_addresses or []) if isinstance(addr, str)
+    }
     stats: Dict[str, Dict[str, Any]] = {}
 
     def _ensure(addr: str) -> Dict[str, Any]:
@@ -686,7 +688,9 @@ def compute_rolling_trends(
     cusum_limit: float = 5.0,
     include_addresses: Sequence[str] | None = None,
 ) -> List[Dict[str, Any]]:
-    watched = {addr.lower() for addr in (include_addresses or []) if isinstance(addr, str)}
+    watched = {
+        addr.lower() for addr in (include_addresses or []) if isinstance(addr, str)
+    }
     values_by_address: Dict[str, Deque[int]] = defaultdict(deque)
     findings: List[Dict[str, Any]] = []
 

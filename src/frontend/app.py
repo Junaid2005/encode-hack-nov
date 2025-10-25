@@ -129,7 +129,9 @@ def _to_arrow_safe_dataframe(records: List[Mapping]) -> pd.DataFrame:
         if has_str and has_int:
             df[column] = series.map(lambda v: str(v) if isinstance(v, int) else v)
         if has_bytes:
-            df[column] = series.map(lambda v: v.decode("utf-8") if isinstance(v, (bytes, bytearray)) else v)
+            df[column] = series.map(
+                lambda v: v.decode("utf-8") if isinstance(v, (bytes, bytearray)) else v
+            )
         df[column] = df[column].astype(str)
     return df
 
@@ -305,7 +307,9 @@ with tab_wallet:
                         st.dataframe(_to_arrow_safe_dataframe(watched))
                     if top_counterparties:
                         st.markdown("**Top counterparties**")
-                        st.dataframe(_to_arrow_safe_dataframe(top_counterparties).head(10))
+                        st.dataframe(
+                            _to_arrow_safe_dataframe(top_counterparties).head(10)
+                        )
 
                     if raw.get("decoded_logs") and wallet_enable_overlay:
                         st.markdown("**Decoded logs**")
@@ -445,7 +449,9 @@ with tab_event_logs:
 
                     if metrics.get("baselines"):
                         st.markdown("**Wallet baselines**")
-                        st.dataframe(_to_arrow_safe_dataframe(metrics["baselines"]).head(15))
+                        st.dataframe(
+                            _to_arrow_safe_dataframe(metrics["baselines"]).head(15)
+                        )
 
                     if raw.get("logs"):
                         _emit_summary("Logs", raw["logs"])

@@ -1,5 +1,5 @@
 import streamlit as st
-from openai import OpenAI
+from openai import AzureOpenAI
 import json
 import sys
 import os
@@ -17,7 +17,11 @@ class ChatWidget:
         function_map: dict = MCP_FUNCTION_MAP,
     ):
         self.api_key = api_key
-        self.client = OpenAI(api_key=api_key)
+        self.client = AzureOpenAI(
+            api_key=api_key or st.secrets["OPENAI_ENDPOINT"],
+            azure_endpoint=st.secrets["OPENAI_ENDPOINT"],
+            api_version=st.secrets["OPENAI_VERSION"],
+        )
 
         self.tools = tools
 
@@ -53,7 +57,7 @@ class ChatWidget:
             # Get AI response with tool calling
             with st.chat_message("assistant", avatar="🐶"):
                 response = self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                    model=st.secrets["OPENAI_DEPLOYMENT"],
                     messages=st.session_state.messages,
                     tools=self.tools,
                     tool_choice="auto",

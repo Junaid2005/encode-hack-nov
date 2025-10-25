@@ -173,9 +173,11 @@ def analyze_wallet_activity(
                 {
                     "id": _generate_alert_id(category),
                     "type": category,
-                    "address": item.get("address")
-                    if isinstance(item, Mapping)
-                    else item.get("event", {}).get("indexed", [None])[0],
+                    "address": (
+                        item.get("address")
+                        if isinstance(item, Mapping)
+                        else item.get("event", {}).get("indexed", [None])[0]
+                    ),
                     "severity": item.get(
                         "severity", SEVERITY_DEFAULTS.get(category, "medium")
                     ),
@@ -185,8 +187,7 @@ def analyze_wallet_activity(
             )
 
     max_severity = max(
-        [SEVERITY_RANK.get(alert.get("severity", "low"), 0) for alert in alerts]
-        or [0]
+        [SEVERITY_RANK.get(alert.get("severity", "low"), 0) for alert in alerts] or [0]
     )
     severity_label = [k for k, v in SEVERITY_RANK.items() if v == max_severity]
     severity_label = severity_label[0] if severity_label else "low"
@@ -269,7 +270,9 @@ def analyze_event_logs(
                 {
                     "id": _generate_alert_id(category),
                     "type": category,
-                    "address": item.get("address") if isinstance(item, Mapping) else None,
+                    "address": (
+                        item.get("address") if isinstance(item, Mapping) else None
+                    ),
                     "severity": item.get(
                         "severity", SEVERITY_DEFAULTS.get(category, "medium")
                     ),
@@ -279,8 +282,7 @@ def analyze_event_logs(
             )
 
     max_severity = max(
-        [SEVERITY_RANK.get(alert.get("severity", "low"), 0) for alert in alerts]
-        or [0]
+        [SEVERITY_RANK.get(alert.get("severity", "low"), 0) for alert in alerts] or [0]
     )
     severity_label = [k for k, v in SEVERITY_RANK.items() if v == max_severity]
     severity_label = severity_label[0] if severity_label else "low"
@@ -342,9 +344,11 @@ def analyze_swap_events(
                 {
                     "id": _generate_alert_id(category),
                     "type": category,
-                    "address": item.get("participants", [None])[0]
-                    if isinstance(item, Mapping)
-                    else None,
+                    "address": (
+                        item.get("participants", [None])[0]
+                        if isinstance(item, Mapping)
+                        else None
+                    ),
                     "severity": item.get(
                         "severity", SEVERITY_DEFAULTS.get(category, "high")
                     ),
@@ -354,8 +358,7 @@ def analyze_swap_events(
             )
 
     max_severity = max(
-        [SEVERITY_RANK.get(alert.get("severity", "low"), 0) for alert in alerts]
-        or [0]
+        [SEVERITY_RANK.get(alert.get("severity", "low"), 0) for alert in alerts] or [0]
     )
     severity_label = [k for k, v in SEVERITY_RANK.items() if v == max_severity]
     severity_label = severity_label[0] if severity_label else "low"
@@ -415,8 +418,7 @@ def analyze_transaction(
         )
 
     max_severity = max(
-        [SEVERITY_RANK.get(alert.get("severity", "low"), 0) for alert in alerts]
-        or [0]
+        [SEVERITY_RANK.get(alert.get("severity", "low"), 0) for alert in alerts] or [0]
     )
     severity_label = [k for k, v in SEVERITY_RANK.items() if v == max_severity]
     severity_label = severity_label[0] if severity_label else "low"
@@ -436,4 +438,3 @@ def analyze_transaction(
         "raw": _sanitize_large_ints(result),
     }
     return response
-
