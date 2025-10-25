@@ -1,0 +1,7 @@
+{
+    "include": ["src"],
+    "venvPath": ".",
+    "venv": null,
+    "extraPaths": ["typings"],
+    "typeCheckingMode": "basic"
+}

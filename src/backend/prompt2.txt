@@ -1,129 +1,87 @@
-🧭 Project Overview
+🔑 Essential Data Fields for Fraud Detection
+1. Transaction Metadata
 
-Objective: Create a backend service that allows intelligence officers to trace illicit cryptocurrency transactions, identify threat actors, and gather actionable intelligence through a user-friendly interface.
+Block Number: Indicates the block in which the transaction was included.
 
-Core Functionalities:
+Transaction Hash: A unique identifier for the transaction.
 
-Cross-Chain Transaction Tracing: Trace the flow of funds across multiple blockchain networks.
+Timestamp: The exact time when the transaction was mined.
 
-Entity Resolution and Link Analysis: Identify and link addresses associated with known threat actors.
+2. Sender and Receiver Information
 
-Anomaly Detection: Detect unusual patterns in transaction behavior.
+From Address: The wallet address initiating the transaction.
 
-Data Enrichment: Enhance raw blockchain data with additional context.
+To Address: The wallet address receiving the transaction.
 
-Case Management and Reporting: Organize and manage investigative cases, generate reports, and track the progress of investigations.
+3. Transaction Details
 
-🛠️ Technical Architecture
-1. Data Retrieval Layer
+Value: The amount of cryptocurrency transferred.
 
-Purpose: Fetch raw blockchain data and enriched intelligence from external APIs.
+Token Address: The contract address of the token involved, if applicable.
 
-Components:
+4. Event Logs (for Token Transfers)
 
-API Clients: Implement clients for interacting with blockchain forensics platforms (e.g., TRM Forensics, Chainalysis, Elliptic).
+Topics: Indexed parameters that can help identify specific events like token transfers.
 
-Data Normalization: Standardize data formats for consistent processing.
+Data: The non-indexed parameters providing additional details about the event.
 
-2. Data Processing Layer
+🛠️ Retrieving Data with HyperSync
 
-Purpose: Process and analyze the retrieved data to extract meaningful insights.
+Envio HyperSync allows you to specify exactly which data fields you want to retrieve, optimizing performance and focusing on relevant information. Here's how you can configure your query:
 
-Components:
+from hypersync import Client, BlockField, LogField, JoinMode
 
-Transaction Analysis: Analyze transaction paths and identify relationships between addresses.
+client = Client(api_key="your_api_key")
 
-Anomaly Detection: Apply machine learning models to detect suspicious patterns.
+query = {
+    "from_block": 0,
+    "logs": [
+        {
+            "topics": ["Transfer(address,address,uint256)"]
+        }
+    ],
+    "field_selection": {
+        "block": [
+            BlockField.NUMBER,
+            BlockField.TIMESTAMP,
+            BlockField.HASH
+        ],
+        "log": [
+            LogField.DATA,
+            LogField.ADDRESS,
+            LogField.TOPIC0,
+            LogField.TOPIC1,
+            LogField.TOPIC2,
+            LogField.TOPIC3
+        ]
+    },
+    "join_mode": JoinMode.JOIN_TRANSACTIONS
+}
 
-Entity Resolution: Link addresses to known entities using risk data.
+stream = await client.stream(query)
 
-3. Case Management Layer
+while True:
+    res = await stream.recv()
+    if res.data and res.data.logs:
+        for log in res.data.logs:
+            # Process each log
+            pass
+    if res.next_block:
+        query["from_block"] = res.next_block
 
-Purpose: Organize investigative cases and facilitate collaboration among analysts.
 
-Components:
+This query retrieves transaction logs related to ERC-20 token transfers, including the specified fields. By focusing on these fields, you can efficiently analyze transaction patterns and detect potential fraudulent activities.
+5. Benford's law
+📊 Analyzing the Data
 
-Case Database: Store case information, including related addresses and transactions.
+Once you've collected the relevant data, you can implement various analysis techniques:
 
-Reporting Tools: Generate reports summarizing findings and recommendations.
+Statistical Analysis: Identify outliers in transaction values or frequencies.
 
-4. Security and Compliance Layer
+Network Analysis: Map interactions between addresses to detect unusual patterns.
 
-Purpose: Ensure data security and compliance with relevant regulations.
+Heuristic Rules: Set thresholds for transaction sizes or frequencies that, when exceeded, flag potential fraud.
 
-Components:
+By focusing on these essential data fields and analysis techniques, you can build a robust system for detecting fraudulent activities on the blockchain.
 
-Encryption: Encrypt sensitive data both at rest and in transit.
-
-Access Control: Implement role-based access control (RBAC) to restrict access to sensitive information.
-
-Audit Logs: Maintain logs of all system activities for accountability.
-
-🧪 Implementation Plan
-Step 1: Define Data Models
-
-Utilize Cursor's MCP to define the necessary data models for transactions, addresses, and cases.
-
-Example Prompt:
-
-"Define data models for transactions, addresses, and investigative cases, ensuring relationships between them are established."
-
-Step 2: Implement Data Retrieval Functions
-
-Develop functions to fetch blockchain data using Envio's HyperSync.
-
-Example Prompt:
-
-"Implement a function to retrieve transaction data for a given address using Envio's HyperSync API."
-
-Step 3: Develop Data Processing Logic
-
-Create logic to process and analyze the retrieved data, identifying patterns and anomalies.
-
-Example Prompt:
-
-"Develop a function to analyze transaction data and identify potential money laundering activities."
-
-Step 4: Build Case Management System
-
-Construct a system to manage investigative cases, including case creation, updates, and reporting.
-
-Example Prompt:
-
-"Build a case management system to organize and track investigative cases, allowing for case creation, updates, and reporting."
-
-Step 5: Implement Security and Compliance Measures
-
-Ensure that the system adheres to security best practices and complies with relevant regulations.
-
-Example Prompt:
-
-"Implement encryption for sensitive data and establish role-based access control to ensure compliance with security standards."
-
-🧠 Integration with Cursor's MCP
-
-Integrate the developed backend functionalities with Cursor's MCP to enable intelligence officers to interact with the system through a user-friendly interface.
-
-Example Prompt:
-
-"Integrate the transaction tracing function with Cursor's MCP, allowing users to input an address and retrieve transaction data."
-
-🔄 Frontend Integration
-
-Develop a frontend interface that communicates with the backend services, providing a dashboard for intelligence officers to view and analyze blockchain data.
-
-Example Prompt:
-
-"Develop a frontend dashboard that displays transaction data, identified anomalies, and case information, allowing users to interact with the system."
-
-✅ Final Steps
-
-Testing: Conduct thorough testing to ensure all components function as expected.
-
-Deployment: Deploy the backend services and frontend interface to a secure environment.
-
-Training: Provide training to intelligence officers on how to use the system effectively.
-
-Maintenance: Establish a plan for ongoing maintenance and updates to the system.
-
-By following this plan, intelligence agencies can develop a robust backend tool to trace illicit blockchain activities, leveraging Envio's HyperSync and Cursor's MCP for efficient and effective operations.
+If you need further assistance with implementing these features or have specific questions, feel free to ask!
