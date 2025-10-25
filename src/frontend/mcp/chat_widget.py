@@ -11,6 +11,7 @@ import json
 import sys
 import os
 import logging
+import pandas as pd
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -251,21 +252,46 @@ class ChatWidget:
         if not data or not spec:
             return None
 
-        chart_spec = {
-            "data": {"values": data},
-            "mark": spec.get("mark", {"type": "bar"}),
-            "encoding": spec.get("encoding", {}),
-        }
+        # Convert data to DataFrame for better Altair compatibility
+        df = pd.DataFrame(data)
+        
+        # Get mark and encoding from spec
+        mark = spec.get("mark", {"type": "bar"})
+        encoding = spec.get("encoding", {})
+        
+        # Build chart using Altair's API directly
+        chart = alt.Chart(df).mark_bar() if mark.get("type") == "bar" else alt.Chart(df).mark_point()
+        
+        # Apply encoding
+        if encoding:
+            chart = chart.encode(**{
+                k: alt.X(v["field"]) if k == "x" and isinstance(v, dict) and "field" in v
+                   else alt.Y(v["field"]) if k == "y" and isinstance(v, dict) and "field" in v
+                   else v
+                for k, v in encoding.items()
+            })
+        
+        # Add title
         title = chart_payload.get("title")
         if title:
-            chart_spec["title"] = title
-        return alt.Chart.from_dict(chart_spec)
+            chart = chart.properties(title=title)
+        
+        # Add dimensions if specified
+        width = spec.get("width", "container")
+        height = spec.get("height", 400)  # Default to 400px height
+        chart = chart.properties(width=width, height=height)
+            
+        return chart
 
     def _render_chart(self, target, chart_obj):
+        if chart_obj is None:
+            target.warning("Chart object is None")
+            return
         try:
-            target.altair_chart(chart_obj, width="stretch")
-        except TypeError:
+            # Try using use_container_width first (more compatible)
             target.altair_chart(chart_obj, use_container_width=True)
+        except Exception as e:
+            target.error(f"Failed to render chart: {str(e)}")
 
     def _render_tool_output(self, content: str, container=None):
         target = container or st
