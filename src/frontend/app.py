@@ -159,8 +159,8 @@ def _emit_counts(name: str, payload) -> None:
     )
 
 
-HYPERSYNC_URL = os.getenv("HYPERSYNC_API_URL")
-TOKEN = os.getenv("HYPERSYNC_API_TOKEN") or os.getenv("hypersync_api_token")
+HYPERSYNC_URL = 'http://eth.hypersync.xyz/'
+TOKEN = st.secrets["HYPERSYNC_API_TOKEN"] or st.secrets["hypersync_api_token"]
 
 with st.sidebar:
     st.header("Connection")
