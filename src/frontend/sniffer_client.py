@@ -265,7 +265,6 @@ def _to_arrow_safe_dataframe(records: List[Mapping]) -> pd.DataFrame:
     return df
 
 
-
 st.set_page_config(
     page_title="Sniffer Client",
     page_icon="🐕‍🦺",
