@@ -1,0 +1,48 @@
+Sniffer Codebase Overview
+=========================
+
+1. Big picture
+   - The project delivers a Streamlit web app called "Sniffer" that helps investigators spot suspicious blockchain activity.
+   - The app has two big jobs: show live market data and run fraud checks on wallets, contracts, swap pools, and individual transactions via HyperSync.
+
+2. Frontend (what the user sees)
+   - `src/frontend/app.py` builds the Streamlit page. It loads env secrets, shows the Sniffer logo, renders crypto metrics, and hosts the chat-style assistant.
+   - `show_crypto_data()` in `src/frontend/crypto_widgets.py` fetches price history for BTC, ETH, SOL, SPY, and USD/GBP using Yahoo Finance, then draws metrics and charts.
+   - The `ChatWidget` in `src/frontend/mcp/chat_widget.py` connects to OpenAI. It keeps a chat history, displays Sniffer mascot images, and asks MCP tools (below) to run real analyses before answering the user.
+
+3. MCP tools (the bridge between chat and backend)
+   - `src/frontend/mcp/mcp_schema.py` lists the available tools (wallet scan, event scan, swap scan, tx scan, plus small demo utilities) so the language model knows how to call them.
+   - Each tool is implemented in `src/frontend/mcp/mcp_funcs/mcp_fraud.py`. These functions:
+     * validate the user input (addresses, block ranges, thresholds)
+     * call the matching backend function
+     * trim the raw results
+     * build human-friendly narratives, short alert lists, and simple chart specs for Streamlit to render.
+
+4. Backend analytics (the investigation engine)
+   - `src/backend/fraud_detection.py` talks to HyperSync. It can pull logs, transactions, and swap data, convert raw responses into plain dictionaries, decode ERC-20 events, and run analyses like:
+     * price impact spikes on Uniswap swaps
+     * wash-trade loops between two wallets
+     * z-score value anomalies, large transfers, and network centrality
+     * rolling transfer trends and basic suspicious-pattern checks.
+   - `src/backend/tools.py` bundles those low-level functions into high-level helpers:
+     * `analyze_wallet_activity`, `analyze_event_logs`, `analyze_swap_events`, `analyze_transaction`, and `top_token_senders`.
+     * Each helper gathers findings, assigns alert IDs and severities, and returns a clean JSON-style report.
+   - `src/backend/yfinance_crypto.py` provides the Yahoo Finance fetcher used by the Streamlit widgets.
+
+5. Package wiring
+   - `src/backend/__init__.py` exports the main analysis helpers so both the Streamlit app and the MCP layer can import them easily.
+   - `requirements.txt` and `pyrightconfig.json` define Python dependencies and type-checking settings.
+
+6. How everything fits together
+   - The user types a request in the Streamlit chat.
+   - ChatWidget sends it to OpenAI with the MCP tool list.
+   - The model picks a tool (for example, `wallet_activity`) and the matching MCP wrapper formats the call.
+   - The backend runs the HyperSync queries, applies fraud heuristics, and sends back structured findings.
+   - The wrapper turns that into easy text, summaries, and chart data, which Streamlit shows in the chat panel.
+
+7. Secrets and assets
+   - API keys live in `.streamlit/secrets.toml` (not committed). Missing keys trigger warnings in the UI.
+   - PNG images in `src/` provide the Sniffer mascot states used in the chat interface.
+
+Quick takeaway: the codebase is a Streamlit dashboard with an AI chat layer on top of a HyperSync-powered fraud analytics toolkit. Frontend files handle user interaction and presentation; backend modules fetch blockchain data, run anomaly detection, and feed explainable summaries back to the chat.
+
