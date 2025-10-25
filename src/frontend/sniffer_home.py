@@ -1,5 +1,6 @@
 import streamlit as st
 import time
+from pathlib import Path
 
 
 def stream_data(text):
@@ -15,19 +16,15 @@ st.set_page_config(
 )
 
 st.title("🏠 Sniffer Home")
+image_path = Path(__file__).resolve().parents[1] / "happy_sniffer.png"
+
 if not st.session_state.get("sniffer_home_visited", False):
     st.session_state["sniffer_home_visited"] = True
     st.write_stream(stream_data("Welcome to the Sniffer..... 🔎"))
-    st.image(
-        "https://media.discordapp.net/attachments/1297654922724118652/1431625304765632522/file_000000003e806246bfa55d0ba545dbfe.png?ex=68fe1876&is=68fcc6f6&hm=34ce702a783f7009f38829e66bd94ed85f15fe460308256ab28d3822dc2d05e8&=&format=webp&quality=lossless&width=948&height=948",
-        use_container_width=True,
-    )
+    st.image(str(image_path), width=360)
     st.balloons()
 else:
-    st.image(
-        "https://media.discordapp.net/attachments/1297654922724118652/1431625304765632522/file_000000003e806246bfa55d0ba545dbfe.png?ex=68fe1876&is=68fcc6f6&hm=34ce702a783f7009f38829e66bd94ed85f15fe460308256ab28d3822dc2d05e8&=&format=webp&quality=lossless&width=948&height=948",
-        use_container_width=True,
-    )
+    st.image(str(image_path), width=360)
     st.caption("Welcome back to the Sniffer!")
 
 st.subheader("What we do")

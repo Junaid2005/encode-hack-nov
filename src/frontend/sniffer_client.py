@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import json
 import time
+import re
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:

@@ -12,7 +12,7 @@ def stream_data(text):
 
 st.set_page_config(
     page_title="Sniffer Core",
-    page_icon="🐶",
+    page_icon="🐶 hello",
     layout="wide",
 )
 
@@ -29,4 +29,5 @@ with st.spinner("Fetching market context..."):
 chat_widget = ChatWidget(
     api_key=st.secrets["OPENAI_API_KEY"],
 )
+
 chat_widget.render()

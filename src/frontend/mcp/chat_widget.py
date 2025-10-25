@@ -10,6 +10,7 @@ from openai import AzureOpenAI
 import json
 import sys
 import os
+import logging
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -86,6 +87,10 @@ class ChatWidget:
         )
         self.image_display_width = 180
         self.model_history_limit = 14
+        self.pending_hypersync_banner = False
+
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
 
         if not st.session_state.get("sniffer_intro_inserted"):
             intro_text = (
@@ -106,6 +111,12 @@ class ChatWidget:
         self.spinner_css = f"""
         <style>
         .sniffer-visual {{
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            min-height: 300px;
+            gap: 12px;
             text-align: center;
         }}
         .sniffer-visual img {{
@@ -128,9 +139,105 @@ class ChatWidget:
             box-shadow: 0 8px 24px rgba(15, 27, 46, 0.45);
         }}
         .sniffer-visual .sniffer-stage-caption span {{
-            color: #ed8f4b;
+            background: linear-gradient(135deg, #2f6bff, #8b47ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }}
+        .sniffer-intro-caption {{
+            margin-top: 0.6rem;
+            font-size: 0.92rem;
+            letter-spacing: 0.2px;
+            color: rgba(236, 241, 255, 0.75);
+        }}
+        .sniffer-thinking-loader {{
+            margin-top: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .sniffer-thinking-loader span {{
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2f6bff, #8b47ff);
+            box-shadow: 0 0 12px rgba(143, 71, 255, 0.6);
+            animation: snifferPulse 1.2s ease-in-out infinite;
+        }}
+        .sniffer-thinking-loader span:nth-child(2) {{
+            animation-delay: 0.15s;
+        }}
+        .sniffer-thinking-loader span:nth-child(3) {{
+            animation-delay: 0.3s;
+        }}
+        .sniffer-thinking-loader + .sniffer-thinking-loader {{
+            margin-top: 0.4rem;
+        }}
+        .sniffer-thinking-wall {{
+            display: flex;
+            justify-content: center;
+            margin-top: 0.35rem;
+        }}
+        .sniffer-thinking-text {{
+            margin: 0;
+            text-align: center;
+            color: rgba(236, 241, 255, 0.9);
+            font-size: 0.95rem;
+            letter-spacing: 0.25px;
+        }}
+        .sniffer-hypersync-banner {{
+            display: flex;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }}
+        .sniffer-hypersync-card {{
+            display: inline-flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 22px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #1f3b65, #0f1b2e);
+            color: #f5f7fb;
+            box-shadow: 0 8px 24px rgba(15, 27, 46, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }}
+        .sniffer-hypersync-card img {{
+            width: 44px;
+            height: auto;
+            filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.35));
+        }}
+        .sniffer-hypersync-card-text {{
+            font-size: 0.98rem;
+            font-weight: 600;
+            letter-spacing: 0.35px;
+        }}
+        .sniffer-hypersync-card-text span {{
+            background: linear-gradient(135deg, #2f6bff, #8b47ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }}
+        #sniffer-chat-wrapper {{
+            max-height: 70vh;
+            overflow-y: auto;
+            padding-right: 4px;
+            scroll-behavior: smooth;
         }}
         </style>
+        <script>
+        const scrollSnifferChat = () => {{
+            try {{
+                const doc = window.parent && window.parent.document ? window.parent.document : document;
+                const log = doc.querySelector('#sniffer-chat-log');
+                if (log) {{
+                    log.scrollTo({{ top: log.scrollHeight, behavior: 'smooth' }});
+                }}
+            }} catch (err) {{
+                // ignore cross-origin issues
+            }}
+        }};
+        window.setTimeout(scrollSnifferChat, 200);
+        </script>
         """
 
     @staticmethod
@@ -168,6 +275,20 @@ class ChatWidget:
             target.markdown(content)
             return
 
+        if self.pending_hypersync_banner:
+            target.markdown(
+                f"""
+                <div class="sniffer-hypersync-banner">
+                    <div class="sniffer-hypersync-card">
+                        <img src="data:image/png;base64,{self.image_ready_b64}" alt="Sniffer fetching data" />
+                        <div class="sniffer-hypersync-card-text"><span>Sniffer</span> is getting data from Envio Hypersync — fetching on-chain evidence.</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            self.pending_hypersync_banner = False
+
         summary = payload.get("summary")
         if summary:
             summary_expander = target.expander("Summary", expanded=False)
@@ -203,7 +324,7 @@ class ChatWidget:
                 target.image(
                     image_bytes,
                     caption="Sniffer raised a fraud alert.",
-                    width="stretch",
+                    width=self.image_display_width,
                 )
             except Exception:
                 target.warning("Fraud visual unavailable, but alerts were triggered.")
@@ -240,65 +361,68 @@ class ChatWidget:
 
     def display_messages(self):
         """Display chat messages"""
-        for message in st.session_state.messages:
-            if isinstance(message, dict):
-                role = message["role"]
-                if role == "system":
-                    continue
-                display_role = "assistant" if role == "tool" else role
-                avatar = "🐶" if role in ["assistant", "tool"] else None
+        if not st.session_state.get("sniffer_spinner_css_injected"):
+            st.markdown(self.spinner_css, unsafe_allow_html=True)
+            st.session_state["sniffer_spinner_css_injected"] = True
+        chat_container = st.container()
+        with chat_container:
+            st.markdown("<div id='sniffer-chat-wrapper'><div id='sniffer-chat-log'>", unsafe_allow_html=True)
+            for message in st.session_state.messages:
+                if isinstance(message, dict):
+                    role = message["role"]
+                    if role == "system":
+                        continue
+                    display_role = "assistant" if role == "tool" else role
 
-                with st.chat_message(display_role, avatar=avatar):
-                    if role == "tool":
-                        self._render_tool_output(message["content"])
-                    else:
-                        image_b64 = message.get("image_b64")
-                        if image_b64:
-                            try:
-                                image_width = message.get("image_width")
-                                if image_width is None:
-                                    st.image(
-                                        base64.b64decode(image_b64),
-                                        caption=message.get("image_caption"),
-                                        width="stretch",
-                                    )
-                                else:
-                                    st.image(
-                                        base64.b64decode(image_b64),
-                                        caption=message.get("image_caption"),
-                                        width=image_width,
-                                    )
-                            except Exception:
-                                st.warning("Unable to display Sniffer visual.")
-                        st.markdown(message["content"])
+                    with st.chat_message(display_role):
+                        if role == "tool":
+                            st.markdown("**🐶 Sniffer**")
+                            self._render_tool_output(message["content"])
+                        else:
+                            image_b64 = message.get("image_b64")
+                            if image_b64:
+                                try:
+                                    image_width = message.get("image_width")
+                                    if image_width is None:
+                                        st.markdown(
+                                            f"""
+                                            <div class="sniffer-visual">
+                                                <img style="width: {self.image_display_width}px; max-width: 100%; height: auto;" src="data:image/png;base64,{image_b64}" alt="Sniffer ready" />
+                                                <div class="sniffer-stage-caption"><span>Sniffer</span> is ready to investigate!</div>
+                                                <div class="sniffer-intro-caption">Share a wallet, contract, pool, or transaction hash and I’ll fetch the data, sniff for anomalies, and chart anything suspicious.</div>
+                                            </div>
+                                            """,
+                                            unsafe_allow_html=True,
+                                        )
+                                    else:
+                                        st.image(
+                                            base64.b64decode(image_b64),
+                                            caption=message.get("image_caption"),
+                                            width=image_width,
+                                        )
+                                except Exception:
+                                    st.warning("Unable to display Sniffer visual.")
+                            st.markdown(message["content"])
+            st.markdown("<div id='sniffer-chat-sentinel'></div></div></div>", unsafe_allow_html=True)
 
     def chat_with_tools(self):
         """Handle chat with tool calling"""
-        if prompt := st.chat_input(
+        user_prompt = st.chat_input(
             "Try: 'Analyze wallet activity for 0x...', 'Scan swap events for pool ...', or 'Review tx hash ...'"
-        ):
+        )
+        if user_prompt:
             # Add user message
-            st.session_state.messages.append({"role": "user", "content": prompt})
+            st.session_state.messages.append({"role": "user", "content": user_prompt})
 
             # Display user message
             with st.chat_message("user"):
-                st.markdown(prompt)
+                st.markdown(user_prompt)
 
             # Get AI response with tool calling
             with st.chat_message("assistant", avatar="🐶"):
                 st.markdown(self.spinner_css, unsafe_allow_html=True)
-                stage_placeholder = st.empty()
-                stage_placeholder.markdown(
-                    f"""
-                            <div class="sniffer-visual">
-                                <img style="width: {self.image_display_width}px; max-width: 100%; height: auto;" src="data:image/png;base64,{self.image_thinking_b64}" alt="Sniffer prepping" />
-                                <div class="sniffer-stage-caption">🐾 <span>Sniffer</span> is locking onto the scent — prepping detection toolkit.</div>
-                            </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
                 tool_output_container = st.container()
-
+                stage_placeholder = st.empty()
                 trimmed_messages = self._prune_history(st.session_state.messages)
 
                 response = self.client.chat.completions.create(
@@ -315,12 +439,16 @@ class ChatWidget:
                         stage_placeholder.markdown(
                             f"""
                             <div class="sniffer-visual">
-                                <img style="width: {self.image_display_width}px; max-width: 100%; height: auto;" src="data:image/png;base64,{self.image_ready_b64}" alt="Sniffer investigating" />
-                                <div class="sniffer-stage-caption">🔍 <span>Sniffer</span> is on the case — combing blocks and sniffing anomalies.</div>
+                                <img style="width: {self.image_display_width}px; max-width: 100%; height: auto;" src="data:image/png;base64,{self.image_ready_b64}" alt="Sniffer querying Envio Hypersync" />
+                                <div class="sniffer-stage-caption"><span>Sniffer</span> is getting data from Envio Hypersync — fetching on-chain evidence.</div>
+                                <div class='sniffer-thinking-wall'>
+                                    <div class='sniffer-thinking-loader'><span></span><span></span><span></span></div>
+                                </div>
                             </div>
                             """,
                             unsafe_allow_html=True,
                         )
+                        self.pending_hypersync_banner = True
                         st.session_state.messages.append(message)
 
                         trimmed_messages = self._prune_history(
@@ -359,12 +487,14 @@ class ChatWidget:
 
                     if message.content:
                         stage_placeholder.empty()
-                        visual_markup = f"""
+                        visual_markup = (
+                            f"""
                             <div class="sniffer-visual">
                                 <img style="width: {self.image_display_width}px; max-width: 100%; height: auto;" src="data:image/png;base64,{self.image_happy_b64}" alt="Sniffer reports ready" />
                                 <div class="sniffer-stage-caption">📬 <span>Sniffer</span> fetched the findings — report ready for review.</div>
                             </div>
                             """
+                        )
                         st.markdown(visual_markup, unsafe_allow_html=True)
                         st.markdown(message.content)
                         st.session_state.messages.append(

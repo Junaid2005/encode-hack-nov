@@ -31,9 +31,3 @@ pg = st.navigation([home_page, core_page, client_page])
 
 # Run the selected page
 pg.run()
-logo_path = Path(__file__).resolve().parents[2] / "src" / "sniffer_logo.png"
-if logo_path.exists():
-    st.image(str(logo_path), width=160)
-else:
-    st.title("Sniffer 🐕")
-st.caption("Sniff out suspicious activity on the blockchain 🔎")

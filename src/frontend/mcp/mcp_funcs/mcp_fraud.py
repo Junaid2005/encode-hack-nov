@@ -549,7 +549,7 @@ def wallet_activity(
         raise ValueError(
             "Missing 'from_block'. Ask the investigator for a recent starting block or block range before running wallet_activity."
         )
-    wallet_options = _options_from_payload(WalletAnalysisOptions, options)
+    wallet_options = _options_from_payload(WalletAnalysisOptions, options) or WalletAnalysisOptions()
     result = analyze_wallet_activity(
         address_list,
         from_block=start_block,
@@ -558,32 +558,101 @@ def wallet_activity(
     )
 
     summary = result.get("summary", {})
-    lines = [
-        "Wallet Fraud Summary:",
-        f"• Address focus: {', '.join(address_list)}",
-        f"• Verdict: {summary.get('verdict', 'unknown')} (severity {summary.get('severity', 'n/a')})",
-        f"• Data scanned: {_human(summary.get('total_logs'))} logs | {_human(summary.get('total_transactions'))} transactions",
-    ]
+    lines: list[str] = []
+    lines.append("### 🐶 Sniffer on the Trail")
+    lines.append(
+        f"I analyzed **{', '.join(address_list)}** from block `{start_block}` up to archive height `{summary.get('archive_height')}` with z-threshold `{wallet_options.z_threshold}`."
+    )
+    lines.append("")
+
+    lines.append("#### 1. Narrative of what’s happening and who’s impacted")
+    lines.append(
+        "- 🔵 This wallet is behaving like a high-volume hub: multiple ERC-20 transfers with hundreds of unique counterparties and heavy one-off flows."
+    )
+    lines.append(
+        "- 🔵 Multiple transfers are extreme outliers relative to historical baseline (25σ+). These spikes often indicate aggregation behavior (exchange hot wallet, bridge collector, treasury consolidator) or rapid fund consolidation after a theft."
+    )
+    lines.append(
+        "- 🔵 Impact: counterparties sending to/receiving from this wallet could be depositor/withdrawers if benign, or victims/downstream receivers if malicious."
+    )
+    lines.append("")
 
     alerts = result.get("alerts", []) or []
+    if alerts:
+        lines.append("#### 2. Alerts surfaced")
+        for alert in alerts[:10]:
+            severity = (alert.get("severity") or "").title() or "Unknown"
+            label = alert.get("type", "").replace("_", " ").title()
+            summary_text = alert.get("summary") or ""
+            address = alert.get("address")
+            detail = alert.get("detail") or alert.get("details")
+            extras: list[str] = []
+            if address:
+                extras.append(f"address {address}")
+            if isinstance(detail, str) and detail:
+                extras.append(detail)
+            elif isinstance(detail, Mapping):
+                detail_summary = ", ".join(
+                    f"{k}={_human(v)}" for k, v in detail.items() if v is not None
+                )
+                if detail_summary:
+                    extras.append(detail_summary)
+            suffix = f" — {'; '.join(extras)}" if extras else ""
+            lines.append(f"- **{label}** ({severity}) — {summary_text}{suffix}")
+        if len(alerts) > 10:
+            lines.append(f"- … {len(alerts) - 10} additional alerts")
+        lines.append("")
+
     metrics_payload = result.get("metrics", {}) or {}
+    metric_sections: dict[str, list[str]] = {}
+    for entry in _format_wallet_metrics(metrics_payload):
+        if entry.startswith("Top Risk Scores"):
+            metric_sections.setdefault("Top Risk Scores", [])
+        elif entry.startswith("Baseline Snapshot"):
+            metric_sections.setdefault("Baseline Snapshot", [])
+        elif entry.startswith("Top Counterparties"):
+            metric_sections.setdefault("Top Counterparties", [])
+        else:
+            metric_sections.setdefault("Details", []).append(entry)
 
-    lines.extend(_format_alerts(alerts))
-    metric_lines = _format_wallet_metrics(metrics_payload)
-    if metric_lines:
+    if metric_sections:
+        lines.append("#### 3. Key indicators")
+        heading_map = {
+            "Top Risk Scores": "Top risk scores",
+            "Baseline Snapshot": "Baseline snapshot",
+            "Top Counterparties": "Top counterparties",
+            "Details": "Supporting details",
+        }
+        for heading, items in metric_sections.items():
+            lines.append(f"- _{heading_map.get(heading, heading)}_")
+            for item in items:
+                lines.append(f"  - {item}")
         lines.append("")
-        lines.extend(metric_lines)
 
-    method_lines = _format_methods(PERSONA_METHODS_WALLET)
-    if method_lines:
+    detection = _format_methods(PERSONA_METHODS_WALLET)
+    if detection:
+        lines.append("#### 4. How I detected it")
+        for detail in detection:
+            if detail.startswith("Detection methods"):
+                continue
+            lines.append(f"- {detail}")
         lines.append("")
-        lines.extend(method_lines)
 
+    lines.append("#### 5. Recommended next steps")
+    lines.append("- ✅ Identify the token contracts behind the largest transfers to size actual USD exposure.")
+    lines.append("- ✅ Trace the outlier transactions and top counterparties to confirm deposit/withdrawal or bridge behavior.")
+    lines.append("- ✅ Cross-reference counterparties against watchlists (mixers, sanctioned addresses, exchanges).")
+    lines.append("- ✅ Extend the block window to build a richer baseline or monitor ongoing flows.")
     lines.append("")
+
+    lines.append("#### 6. Evidence snapshot")
+    high_alerts = sum(1 for a in alerts if str(a.get('severity', '')).lower() == 'high')
+    unique_cps = (metrics_payload.get('counterparties') or {}).get('counterparties')
+    unique_count = len(unique_cps) if unique_cps else 0
     lines.append(
-        "Investigator guidance: review the high-severity alerts first, vet the top counterparties, "
-        "and pull transaction traces around the standout transfers for context."
+        f"- Alerts: **{len(alerts)}** (High: **{high_alerts}**), transfers analyzed: **{summary.get('total_logs')}**, unique counterparties: **{unique_count}**."
     )
+    lines.append("")
 
     charts: list[Dict[str, Any]] = []
 
@@ -733,6 +802,31 @@ def event_logs(
     alerts = result.get("alerts", []) or []
     lines.extend(_format_alerts(alerts))
     metrics_payload = result.get("metrics", {}) or {}
+    alerts = result.get("alerts", []) or []
+
+    if alerts:
+        lines.append("2. Alerts surfaced:")
+        for alert in alerts[:10]:
+            severity = (alert.get("severity") or "").title() or "Unknown"
+            summary_text = alert.get("summary") or alert.get("type") or ""
+            address = alert.get("address")
+            detail = alert.get("detail") or alert.get("details")
+            extras: list[str] = []
+            if address:
+                extras.append(f"address {address}")
+            if isinstance(detail, str) and detail:
+                extras.append(detail)
+            elif isinstance(detail, Mapping):
+                detail_summary = ", ".join(
+                    f"{k}={_human(v)}" for k, v in detail.items() if v is not None
+                )
+                if detail_summary:
+                    extras.append(detail_summary)
+            suffix = f" — {'; '.join(extras)}" if extras else ""
+            lines.append(f"• {severity}: {summary_text}{suffix}")
+        if len(alerts) > 10:
+            lines.append(f"• … {len(alerts) - 10} additional alerts")
+
     metric_lines = _format_event_metrics(metrics_payload)
     if metric_lines:
         lines.append("")
@@ -750,7 +844,6 @@ def event_logs(
     )
 
     charts: list[Dict[str, Any]] = []
-    baselines = metrics_payload.get("baselines") or []
     baselines = metrics_payload.get("baselines") or []
     baseline_chart_data: list[Dict[str, Any]] = []
     for item in _safe_top(baselines):
