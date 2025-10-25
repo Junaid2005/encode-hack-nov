@@ -28,6 +28,12 @@ class QueryResponse:
 class Query:
     def __init__(self, **kwargs: Any) -> None: ...
 
+def preset_query_logs(address: str, from_block: int, to_block: Optional[int] | None = None) -> Query: ...
+
+def preset_query_logs_of_event(
+    address: str, topic0: str, from_block: int, to_block: Optional[int] | None = None
+) -> Query: ...
+
 class LogSelection:
     def __init__(self, **kwargs: Any) -> None: ...
 
@@ -36,6 +42,9 @@ class TransactionSelection:
 
 class FieldSelection:
     def __init__(self, **kwargs: Any) -> None: ...
+
+class JoinMode:
+    JOIN_NOTHING: Any
 
 class HexOutput:
     PREFIXED: Any

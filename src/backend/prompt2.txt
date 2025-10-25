@@ -1,0 +1,87 @@
+🔑 Essential Data Fields for Fraud Detection
+1. Transaction Metadata
+
+Block Number: Indicates the block in which the transaction was included.
+
+Transaction Hash: A unique identifier for the transaction.
+
+Timestamp: The exact time when the transaction was mined.
+
+2. Sender and Receiver Information
+
+From Address: The wallet address initiating the transaction.
+
+To Address: The wallet address receiving the transaction.
+
+3. Transaction Details
+
+Value: The amount of cryptocurrency transferred.
+
+Token Address: The contract address of the token involved, if applicable.
+
+4. Event Logs (for Token Transfers)
+
+Topics: Indexed parameters that can help identify specific events like token transfers.
+
+Data: The non-indexed parameters providing additional details about the event.
+
+🛠️ Retrieving Data with HyperSync
+
+Envio HyperSync allows you to specify exactly which data fields you want to retrieve, optimizing performance and focusing on relevant information. Here's how you can configure your query:
+
+from hypersync import Client, BlockField, LogField, JoinMode
+
+client = Client(api_key="your_api_key")
+
+query = {
+    "from_block": 0,
+    "logs": [
+        {
+            "topics": ["Transfer(address,address,uint256)"]
+        }
+    ],
+    "field_selection": {
+        "block": [
+            BlockField.NUMBER,
+            BlockField.TIMESTAMP,
+            BlockField.HASH
+        ],
+        "log": [
+            LogField.DATA,
+            LogField.ADDRESS,
+            LogField.TOPIC0,
+            LogField.TOPIC1,
+            LogField.TOPIC2,
+            LogField.TOPIC3
+        ]
+    },
+    "join_mode": JoinMode.JOIN_TRANSACTIONS
+}
+
+stream = await client.stream(query)
+
+while True:
+    res = await stream.recv()
+    if res.data and res.data.logs:
+        for log in res.data.logs:
+            # Process each log
+            pass
+    if res.next_block:
+        query["from_block"] = res.next_block
+
+
+This query retrieves transaction logs related to ERC-20 token transfers, including the specified fields. By focusing on these fields, you can efficiently analyze transaction patterns and detect potential fraudulent activities.
+5. Benford's law
+📊 Analyzing the Data
+
+Once you've collected the relevant data, you can implement various analysis techniques:
+
+Statistical Analysis: Identify outliers in transaction values or frequencies.
+
+Network Analysis: Map interactions between addresses to detect unusual patterns.
+
+Heuristic Rules: Set thresholds for transaction sizes or frequencies that, when exceeded, flag potential fraud.
+
+By focusing on these essential data fields and analysis techniques, you can build a robust system for detecting fraudulent activities on the blockchain.
+
+If you need further assistance with implementing these features or have specific questions, feel free to ask!
