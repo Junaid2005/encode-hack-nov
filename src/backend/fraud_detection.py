@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import math
 import statistics
-from collections import defaultdict
-from typing import Any, Dict, List, Mapping, Sequence, Tuple, cast
+from collections import defaultdict, deque
+from typing import Any, Deque, Dict, List, Mapping, Sequence, Tuple, cast
 
 import hypersync
 from hypersync import (
@@ -606,6 +606,157 @@ def compute_address_centrality(
         if degree >= min_degree:
             centrality.append({"address": address, "degree": degree})
     return sorted(centrality, key=lambda item: item["degree"], reverse=True)
+
+
+def compute_wallet_baselines(
+    decoded_logs: Sequence[Mapping[str, Any]],
+    watched_addresses: Sequence[str] | None = None,
+    *,
+    window_size: int = 20,
+) -> List[Dict[str, Any]]:
+    watched = {addr.lower() for addr in (watched_addresses or []) if isinstance(addr, str)}
+    stats: Dict[str, Dict[str, Any]] = {}
+
+    def _ensure(addr: str) -> Dict[str, Any]:
+        return stats.setdefault(
+            addr,
+            {
+                "address": addr,
+                "values": [],
+                "counterparties": set(),
+            },
+        )
+
+    for event in decoded_logs:
+        sender, receiver, value = _extract_transfer(event)
+        if value is None:
+            value = 0
+
+        participants: List[Tuple[str | None, str | None]] = []
+        if sender:
+            participants.append((sender, receiver))
+        if receiver:
+            participants.append((receiver, sender))
+
+        for addr, counterparty in participants:
+            if not addr:
+                continue
+            addr_l = addr.lower()
+            if watched and addr_l not in watched:
+                continue
+            entry = _ensure(addr_l)
+            entry["values"].append(abs(value))
+            if counterparty:
+                entry["counterparties"].add(counterparty.lower())
+
+    baselines: List[Dict[str, Any]] = []
+    for addr, payload in stats.items():
+        values: List[int] = payload.get("values", [])
+        counterparties: set[str] = payload.get("counterparties", set())
+        transfer_count = len(values)
+        total_volume = float(sum(values)) if values else 0.0
+        mean_value = statistics.fmean(values) if values else 0.0
+        median_value = statistics.median(values) if values else 0.0
+        if window_size > 0:
+            rolling_slice = values[-window_size:]
+        else:
+            rolling_slice = values
+        rolling_volume = float(sum(rolling_slice)) if rolling_slice else 0.0
+
+        baselines.append(
+            {
+                "address": addr,
+                "transfer_count": transfer_count,
+                "mean_value": mean_value,
+                "median_value": median_value,
+                "rolling_volume": rolling_volume,
+                "total_volume": total_volume,
+                "unique_counterparties": len(counterparties),
+            }
+        )
+
+    return sorted(baselines, key=lambda item: item["total_volume"], reverse=True)
+
+
+def compute_rolling_trends(
+    decoded_logs: Sequence[Mapping[str, Any]],
+    *,
+    window: int = 20,
+    z_threshold: float = 3.0,
+    cusum_limit: float = 5.0,
+    include_addresses: Sequence[str] | None = None,
+) -> List[Dict[str, Any]]:
+    watched = {addr.lower() for addr in (include_addresses or []) if isinstance(addr, str)}
+    values_by_address: Dict[str, Deque[int]] = defaultdict(deque)
+    findings: List[Dict[str, Any]] = []
+
+    for event in decoded_logs:
+        sender, receiver, value = _extract_transfer(event)
+        if value is None:
+            value = 0
+        participants = []
+        if sender:
+            participants.append(sender.lower())
+        if receiver:
+            participants.append(receiver.lower())
+
+        for addr in participants:
+            if watched and addr not in watched:
+                continue
+            series = values_by_address[addr]
+            series.append(abs(value))
+            if len(series) > window:
+                series.popleft()
+
+            if len(series) < max(5, window // 2):
+                continue
+
+            window_values = list(series)
+            mean = statistics.fmean(window_values)
+            std_dev = statistics.pstdev(window_values)
+            latest = window_values[-1]
+
+            rolling_z = None
+            if not math.isclose(std_dev, 0.0):
+                rolling_z = (latest - mean) / std_dev
+
+            # Simple CUSUM tracking for sustained shifts
+            cusum_pos = 0.0
+            cusum_neg = 0.0
+            cusum_triggered = False
+            for item in window_values:
+                deviation = item - mean
+                cusum_pos = max(0.0, cusum_pos + deviation)
+                cusum_neg = min(0.0, cusum_neg + deviation)
+                if cusum_pos > cusum_limit or abs(cusum_neg) > cusum_limit:
+                    cusum_triggered = True
+                    break
+
+            if rolling_z is not None and abs(rolling_z) >= z_threshold:
+                findings.append(
+                    {
+                        "address": addr,
+                        "type": "rolling_z",
+                        "z_score": rolling_z,
+                        "mean_window_value": mean,
+                        "latest_value": latest,
+                        "window": window,
+                    }
+                )
+
+            if cusum_triggered:
+                findings.append(
+                    {
+                        "address": addr,
+                        "type": "cusum_shift",
+                        "mean_window_value": mean,
+                        "latest_value": latest,
+                        "cusum_limit": cusum_limit,
+                        "window": window,
+                    }
+                )
+
+    return sorted(findings, key=lambda item: abs(item.get("z_score", 0)), reverse=True)
 
 
 def score_wallet_activity(
