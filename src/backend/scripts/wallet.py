@@ -12,7 +12,9 @@ from hypersync import BlockField, TransactionField, LogField
 #     "0x32448eb389aBe39b20d5782f04a8d71a2b2e7189".lower(),
 # ]
 
-ERC20_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+ERC20_TRANSFER_TOPIC = (
+    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+)
 
 
 # Convert address to topic for filtering. Padds the address with zeroes.
@@ -78,18 +80,18 @@ async def main(args: argparse.Namespace):
         ],
         transactions=[
             # get all transactions coming from and going to any of our addresses.
-			hypersync.TransactionSelection(from_=addresses),
-			hypersync.TransactionSelection(to=addresses),
-		],
+            hypersync.TransactionSelection(from_=addresses),
+            hypersync.TransactionSelection(to=addresses),
+        ],
         # Select the fields we are interested in, notice topics are selected as topic0,1,2,3
         field_selection=hypersync.FieldSelection(
-			block=[
-				BlockField.NUMBER,
-				BlockField.TIMESTAMP,
-				BlockField.HASH,
-			],
-			log=[
-				LogField.BLOCK_NUMBER,
+            block=[
+                BlockField.NUMBER,
+                BlockField.TIMESTAMP,
+                BlockField.HASH,
+            ],
+            log=[
+                LogField.BLOCK_NUMBER,
                 LogField.LOG_INDEX,
                 LogField.TRANSACTION_INDEX,
                 LogField.TRANSACTION_HASH,
@@ -99,7 +101,7 @@ async def main(args: argparse.Namespace):
                 LogField.TOPIC1,
                 LogField.TOPIC2,
                 LogField.TOPIC3,
-			],
+            ],
             transaction=[
                 TransactionField.BLOCK_NUMBER,
                 TransactionField.TRANSACTION_INDEX,
@@ -108,8 +110,8 @@ async def main(args: argparse.Namespace):
                 TransactionField.TO,
                 TransactionField.VALUE,
                 TransactionField.INPUT,
-            ]
-		)
+            ],
+        ),
     )
 
     print("Running the query...")
@@ -118,9 +120,9 @@ async def main(args: argparse.Namespace):
 
     print(f"Ran the query once.  Next block to query is {res.next_block}")
 
-    decoder = hypersync.Decoder([
-        "Transfer(address indexed from, address indexed to, uint256 value)"
-    ])
+    decoder = hypersync.Decoder(
+        ["Transfer(address indexed from, address indexed to, uint256 value)"]
+    )
 
     # Decode the log on a background thread so we don't block the event loop.
     # Can also use decoder.decode_logs_sync if it is more convenient.
@@ -130,13 +132,17 @@ async def main(args: argparse.Namespace):
     total_erc20_volume = {}
 
     for log in decoded_logs:
-        #skip invalid logs
+        # skip invalid logs
         if log is None:
             continue
 
         # Check if the keys exist in the dictionary, if not, initialize them with 0
-        total_erc20_volume[log.indexed[0].val] = total_erc20_volume.get(log.indexed[0].val, 0)
-        total_erc20_volume[log.indexed[1].val] = total_erc20_volume.get(log.indexed[1].val, 0)
+        total_erc20_volume[log.indexed[0].val] = total_erc20_volume.get(
+            log.indexed[0].val, 0
+        )
+        total_erc20_volume[log.indexed[1].val] = total_erc20_volume.get(
+            log.indexed[1].val, 0
+        )
 
         # We count for both sides but we will filter by our addresses later
         # so we will ignore unnecessary addresses.

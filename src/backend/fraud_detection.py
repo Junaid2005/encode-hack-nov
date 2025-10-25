@@ -19,8 +19,12 @@ from hypersync import (
     TransactionSelection,
 )
 
-ERC20_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
-TRANSFER_EVENT_SIGNATURE = "Transfer(address indexed from, address indexed to, uint256 value)"
+ERC20_TRANSFER_TOPIC = (
+    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+)
+TRANSFER_EVENT_SIGNATURE = (
+    "Transfer(address indexed from, address indexed to, uint256 value)"
+)
 
 
 def _address_to_topic(address: str) -> str:
@@ -93,7 +97,9 @@ def _maybe_hex_to_int(value: Any) -> int | None:
     return None
 
 
-def _extract_transfer(event: Mapping[str, Any]) -> tuple[str | None, str | None, int | None]:
+def _extract_transfer(
+    event: Mapping[str, Any],
+) -> tuple[str | None, str | None, int | None]:
     indexed = event.get("indexed", []) or []
     body = event.get("body", []) or []
     from_addr = indexed[0] if len(indexed) > 0 else None
@@ -127,10 +133,26 @@ def analyze_swap_price_impact(
         sqrt_price_any = body[2]
         liquidity_any = body[3]
 
-        amount0_val = _maybe_hex_to_int(amount0_any) if isinstance(amount0_any, str) else amount0_any
-        amount1_val = _maybe_hex_to_int(amount1_any) if isinstance(amount1_any, str) else amount1_any
-        sqrt_price_val = _maybe_hex_to_int(sqrt_price_any) if isinstance(sqrt_price_any, str) else sqrt_price_any
-        liquidity_val = _maybe_hex_to_int(liquidity_any) if isinstance(liquidity_any, str) else liquidity_any
+        amount0_val = (
+            _maybe_hex_to_int(amount0_any)
+            if isinstance(amount0_any, str)
+            else amount0_any
+        )
+        amount1_val = (
+            _maybe_hex_to_int(amount1_any)
+            if isinstance(amount1_any, str)
+            else amount1_any
+        )
+        sqrt_price_val = (
+            _maybe_hex_to_int(sqrt_price_any)
+            if isinstance(sqrt_price_any, str)
+            else sqrt_price_any
+        )
+        liquidity_val = (
+            _maybe_hex_to_int(liquidity_any)
+            if isinstance(liquidity_any, str)
+            else liquidity_any
+        )
 
         if None in (amount0_val, amount1_val, sqrt_price_val, liquidity_val):
             continue
@@ -319,9 +341,7 @@ def collect_wallet_activity(
             for block in result.data.blocks
         ]
         decoded_serialized = [
-            _decoded_event_to_dict(entry)
-            for entry in decoded_logs
-            if entry is not None
+            _decoded_event_to_dict(entry) for entry in decoded_logs if entry is not None
         ]
 
         return {
@@ -367,13 +387,17 @@ def fetch_event_logs(
 ) -> Mapping[str, Any]:
     async def _collect() -> Mapping[str, Any]:
         client = hypersync.HypersyncClient(ClientConfig())
-        query = hypersync.preset_query_logs_of_event(contract, topic0, start_block, end_block)
+        query = hypersync.preset_query_logs_of_event(
+            contract, topic0, start_block, end_block
+        )
         result = await client.get(query)
         decoded_logs = None
         if topic0.lower() == ERC20_TRANSFER_TOPIC:
             decoder = hypersync.Decoder([TRANSFER_EVENT_SIGNATURE])
             decoded = await decoder.decode_logs(result.data.logs)
-            decoded_logs = [_decoded_event_to_dict(ev) for ev in decoded if ev is not None]
+            decoded_logs = [
+                _decoded_event_to_dict(ev) for ev in decoded if ev is not None
+            ]
         logs = [_log_to_dict(log) for log in result.data.logs]
         return {
             "next_block": result.next_block,
@@ -441,9 +465,7 @@ def fetch_transaction_by_hash(
             ],
         )
         result = await client.get(query)
-        transactions = [
-            _transaction_to_dict(tx) for tx in result.data.transactions
-        ]
+        transactions = [_transaction_to_dict(tx) for tx in result.data.transactions]
         return {
             "next_block": result.next_block,
             "archive_height": result.archive_height,
@@ -523,7 +545,9 @@ def detect_value_anomalies(
         body = entry.get("body", [])
         if not body:
             continue
-        maybe_value = _maybe_hex_to_int(body[0]) if isinstance(body[0], str) else body[0]
+        maybe_value = (
+            _maybe_hex_to_int(body[0]) if isinstance(body[0], str) else body[0]
+        )
         if maybe_value is None:
             continue
         values.append(float(maybe_value))
@@ -618,7 +642,9 @@ def score_wallet_activity(
                     }
                 )
 
-    central_map = {item["address"].lower(): item for item in centrality if item.get("address")}
+    central_map = {
+        item["address"].lower(): item for item in centrality if item.get("address")
+    }
     for addr, record in scores.items():
         central_record = central_map.get(addr)
         if central_record:
@@ -701,7 +727,7 @@ def summarize_counterparties(
 
 
 def detect_suspicious_patterns(
-    decoded_logs: Sequence[Mapping[str, Any]]
+    decoded_logs: Sequence[Mapping[str, Any]],
 ) -> List[Dict[str, Any]]:
     findings: List[Dict[str, Any]] = []
     for event in decoded_logs:

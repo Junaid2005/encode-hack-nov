@@ -2,8 +2,14 @@ import os
 import sys
 from pathlib import Path
 from typing import List
-
+from openai import OpenAI
+import numpy as np
+import pandas as pd
 import streamlit as st
+
+backend_path = os.path.join(os.path.dirname(__file__), "..", "backend")
+sys.path.insert(0, backend_path)
+from yfinance_crypto import CryptoDataFetcher
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -18,14 +24,121 @@ from src.backend import (
     top_token_senders,
 )
 
-ERC20_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
-
-st.set_page_config(page_title="HyperSync Fraud Detection", layout="wide")
-st.title("HyperSync Fraud Detection Toolkit")
-
-st.caption(
-    "Run fraud-analysis oriented HyperSync queries directly from Streamlit."
+ERC20_TRANSFER_TOPIC = (
+    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 )
+
+st.set_page_config(
+    page_title="Sniffer",
+    page_icon="🐕",
+    layout="wide",
+)
+
+st.title("Sniffer 🐕")
+st.caption("🔎 Sniff out suspicious activity by the power of HyperSync")
+
+
+# Crypto metrics
+col1, col2, col3 = st.columns(3)
+
+
+# Fetch crypto data using our backend method
+# @st.cache_data(ttl=60)  # Cache for 60 seconds
+# Lets not cache, refreshing on rerendering is fine
+def show_crypto_data():
+    try:
+        fetcher = CryptoDataFetcher()
+        crypto_data = fetcher.get_multiple_crypto_prices(
+            ["BTC", "ETH", "SOL", "SPY", "USD/GBP"]
+        )
+        # print(crypto_data)
+
+        # Create columns for each crypto
+        cols = st.columns(len(crypto_data))
+
+        # Iterate through crypto data and display metrics
+        for i, symbol in enumerate(crypto_data.keys()):
+            with cols[i]:
+                # with st.container(border=True):
+                st.metric(
+                    label=f"{symbol}",
+                    value=crypto_data[symbol]["price"],
+                    delta=crypto_data[symbol]["change_percent"],
+                    chart_data=crypto_data[symbol]["chart_data"],
+                    border=True,
+                )
+
+    except Exception as e:
+        st.error(f"Error loading crypto data: {e}")
+        print("Error loading crypto data", e)
+
+
+@st.cache_data
+def generate_scatter_data(button_pressed: bool, random_seed: int):
+    """Generate scatter data - cached but refreshes when button is pressed"""
+    np.random.seed(random_seed)  # Use seed for reproducibility
+    return pd.DataFrame(
+        {
+            "X": np.random.normal(0, 1, 100),
+            "Y": np.random.normal(0, 1, 100),
+            "Size": np.random.randint(10, 100, 100),
+        }
+    )
+
+
+show_crypto_data()
+
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+
+if "openai_model" not in st.session_state:
+    st.session_state["openai_model"] = "gpt-3.5-turbo"
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+col1, col2 = st.columns([0.7, 0.3])
+with col1:
+    st.subheader("Fraud in the Market")
+    detect_button = st.button("Sniff Fraud 🔎")
+    if detect_button:
+        # Generate new data when button is pressed
+        scatter_data = generate_scatter_data(
+            button_pressed=True, random_seed=np.random.randint(0, 10000)
+        )
+        st.scatter_chart(scatter_data)
+    else:
+        scatter_data = generate_scatter_data(button_pressed=False, random_seed=42)
+        st.scatter_chart(scatter_data)
+
+
+with col2:
+    if prompt := st.chat_input("How can I help you today?"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            stream = client.chat.completions.create(
+                model=st.session_state["openai_model"],
+                messages=[
+                    {"role": m["role"], "content": m["content"]}
+                    for m in st.session_state.messages
+                ],
+                stream=True,
+            )
+            response = st.write_stream(stream)
+        st.session_state.messages.append({"role": "assistant", "content": response})
+
+# Show env status for the HyperSync token
+_token = st.secrets["HYPERSYNC_API_TOKEN"] or st.secrets["hypersync_api_token"]
+if not _token:
+    st.warning(
+        "No HyperSync API token found. Set HYPERSYNC_API_TOKEN or hypersync_api_token before fetching."
+    )
 
 
 def _split_addresses(value: str) -> List[str]:
@@ -86,9 +199,7 @@ with tab_wallet:
         placeholder="Enter addresses separated by commas or new lines",
         height=120,
     )
-    wallet_from_block = st.number_input(
-        "Start block", min_value=0, value=0, step=1
-    )
+    wallet_from_block = st.number_input("Start block", min_value=0, value=0, step=1)
     wallet_topic = st.text_input(
         "Transfer event topic0",
         value=ERC20_TRANSFER_TOPIC,
@@ -265,9 +376,7 @@ with tab_top:
         value=ERC20_TRANSFER_TOPIC,
         key="top_topic",
     )
-    top_n = st.number_input(
-        "Top N", min_value=1, value=10, step=1, key="top_n"
-    )
+    top_n = st.number_input("Top N", min_value=1, value=10, step=1, key="top_n")
 
     if st.button("Rank senders", key="top_senders"):
         if not top_contract:

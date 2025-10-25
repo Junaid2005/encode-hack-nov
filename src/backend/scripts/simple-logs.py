@@ -44,9 +44,7 @@ async def main(args: argparse.Namespace):
 
     print("Running the query...")
     res = await client.get(query)
-    print(
-        f"Query returned {len(res.data.logs)} logs from contract {args.contract}"
-    )
+    print(f"Query returned {len(res.data.logs)} logs from contract {args.contract}")
 
 
 if __name__ == "__main__":
