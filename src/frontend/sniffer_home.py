@@ -59,6 +59,7 @@ with col1:
         st.write(
             "Leads the pack with expertise in backend development and data analysis. Sniffs out fraud patterns in blockchain data with unmatched precision."
         )
+        st.markdown("🔗 [GitHub](https://github.com/AbdulAaqib) | 💼 [LinkedIn](https://www.linkedin.com/in/abdulaaqib/)")
 
 with col2:
     with st.container(border=True, height=300):
@@ -67,6 +68,7 @@ with col2:
         st.write(
             "Crafts the frontend experience with Streamlit wizardry. Transforms complex data into beautiful, intuitive interfaces that even a puppy could navigate."
         )
+        st.markdown("🔗 [GitHub](https://github.com/Junaid2005) | 💼 [LinkedIn](https://www.linkedin.com/in/junaid-mohammad-4a4091260/)")
 
 with col3:
     with st.container(border=True, height=300):
@@ -75,3 +77,4 @@ with col3:
         st.write(
             "Guides the pack's vision and brand identity. Ensures Sniffer remains the top dog in blockchain fraud detection through strategic planning and market positioning."
         )
+        st.markdown("💼 [LinkedIn](https://www.linkedin.com/in/walid-m-155819267/)")
