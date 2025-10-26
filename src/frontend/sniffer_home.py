@@ -34,11 +34,11 @@ We're a pack of developers who are *paws-itively* passionate about blockchain an
 We've built Sniffer to help you sniff out suspicious activity on the blockchain—no bones about it!
 
 **Our Tools:**  
-- 🐶 **Sniffer Core**: An AI-powered assistant that doesn't just sit and stay—it actively helps you 
+- 🐶 **Sniffer AI**: An AI-powered assistant that doesn't just sit and stay—it actively helps you 
   query blockchain data verbally, generates insightful graphs, and lets you have a proper conversation 
   about your findings. Ask questions, get answers, and visualise patterns without lifting a paw.
 
-- 🐕‍🦺 **Sniffer Client**: An MCP UI client for HyperSync that lets you dig deep into blockchain data 
+- 🔧 **Sniffer MCP Tools**: An MCP UI client for HyperSync that lets you dig deep into blockchain data 
   with powerful fraud detection analytics. It's the ultimate fetch tool for blockchain forensics.
 
 Whether you're tracking down dodgy transactions or analysing market trends, Sniffer has got your back. 
@@ -62,7 +62,7 @@ with col1:
 
 with col2:
     with st.container(border=True, height=300):
-        st.subheader("Junaid 🐕‍🦺")
+        st.subheader("Junaid 🔧")
         st.markdown("**Lead Paw-grammer**")
         st.write(
             "Crafts the frontend experience with Streamlit wizardry. Transforms complex data into beautiful, intuitive interfaces that even a puppy could navigate."

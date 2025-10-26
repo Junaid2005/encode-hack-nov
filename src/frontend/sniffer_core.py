@@ -11,12 +11,12 @@ def stream_data(text):
 
 
 st.set_page_config(
-    page_title="Sniffer Core",
-    page_icon="🐶 hello",
+    page_title="Sniffer AI",
+    page_icon="🐶",
     layout="wide",
 )
 
-st.title("Sniffer Core 🐕")
+st.title("Sniffer AI 🐕")
 if not st.session_state.get("sniffer_core_visited", False):
     st.session_state["sniffer_core_visited"] = True
     st.write_stream(stream_data("Sniff out suspicious activity on the blockchain! 🔎"))
