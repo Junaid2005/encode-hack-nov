@@ -29,14 +29,49 @@ from src.backend.fraud_detection import (  # type: ignore  # noqa: E402
 )
 
 
+def _validate_address(address: str) -> str:
+    """Validate and normalize Ethereum address."""
+    if not address:
+        raise ValueError("Address cannot be empty")
+    
+    addr = address.strip().lower()
+    if not addr.startswith("0x"):
+        addr = "0x" + addr
+    
+    # Check all characters after "0x" are valid hex first
+    hex_part = addr[2:]
+    if not all(c in "0123456789abcdef" for c in hex_part):
+        invalid_chars = [c for c in hex_part if c not in "0123456789abcdef"]
+        raise ValueError(
+            f"Invalid address format: '{address}' contains non-hex characters: {invalid_chars}"
+        )
+    
+    # Ethereum addresses should be 42 chars: "0x" + 40 hex digits
+    if len(addr) != 42:
+        hex_digits = len(hex_part)
+        if hex_digits < 40:
+            # Pad with leading zeros if close
+            addr = "0x" + hex_part.zfill(40)
+        else:
+            # Too long - can't fix automatically
+            raise ValueError(
+                f"Invalid address length: '{address}' has {hex_digits} hex digits "
+                f"(expected exactly 40). Please provide a valid Ethereum address."
+            )
+    
+    return addr
+
+
 def _maybe_sequence(value: Any) -> Sequence[str]:
     if value is None:
         return []
     if isinstance(value, str):
         parts = [segment.strip() for segment in value.replace("\n", ",").split(",")]
-        return [part for part in parts if part]
+        validated = [_validate_address(part) for part in parts if part]
+        return validated
     if isinstance(value, Sequence):
-        return [str(item) for item in value]
+        validated = [_validate_address(str(item)) for item in value]
+        return validated
     raise TypeError("Expected a string or sequence of strings")
 
 
@@ -785,6 +820,8 @@ def event_logs(
 ) -> str:
     if not contract:
         raise ValueError("'contract' is required")
+    
+    validated_contract = _validate_address(contract)
 
     start = _maybe_int(start_block)
     end = _maybe_int(end_block)
@@ -793,7 +830,7 @@ def event_logs(
 
     event_options = _options_from_payload(EventAnalysisOptions, options)
     result = analyze_event_logs(
-        contract,
+        validated_contract,
         topic0=topic0 or ERC20_TRANSFER_TOPIC,
         start_block=start,
         end_block=end,
@@ -803,7 +840,7 @@ def event_logs(
     summary = result.get("summary", {})
     lines = [
         "Contract Event Findings:",
-        f"• Contract: {contract}",
+        f"• Contract: {validated_contract}",
         f"• Blocks scanned: {start} → {end}",
         f"• Verdict: {summary.get('verdict', 'unknown')} (severity {summary.get('severity', 'n/a')})",
         f"• Logs analysed: {_human(summary.get('total_logs'))}",
@@ -917,6 +954,8 @@ def swap_events(
         raise ValueError("'pool_address' is required")
     if not topic0:
         raise ValueError("'topic0' is required for swap event analysis")
+    
+    validated_pool = _validate_address(pool_address)
 
     start = _maybe_int(start_block)
     end = _maybe_int(end_block)
@@ -925,7 +964,7 @@ def swap_events(
 
     swap_options = _options_from_payload(SwapAnalysisOptions, options)
     result = analyze_swap_events(
-        pool_address,
+        validated_pool,
         topic0=topic0,
         start_block=start,
         end_block=end,
@@ -937,7 +976,7 @@ def swap_events(
 
     lines = [
         "Swap Surveillance Report:",
-        f"• Pool: {pool_address}",
+        f"• Pool: {validated_pool}",
         f"• Blocks scanned: {start} → {end}",
         f"• Verdict: {summary.get('verdict', 'unknown')} (severity {summary.get('severity', 'n/a')})",
         f"• Logs analysed: {_human(summary.get('total_logs'))}",
