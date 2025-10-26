@@ -89,7 +89,6 @@ class ChatWidget:
         elif messages[0].get("role") != "system":
             messages.insert(0, SnifferMessage("system", self.system_prompt).to_dict())
         st.session_state.setdefault("sniffer_history", [])
-        st.session_state.setdefault("sniffer_spinner_css_injected", False)
 
     # ------------------------------------------------------------------
     # UI helpers
@@ -231,42 +230,49 @@ class ChatWidget:
     # ------------------------------------------------------------------
     # Core chat loop
     # ------------------------------------------------------------------
-    def _handle_tool_calls(self, message: Any) -> None:
-        with st.status("🐕 Sniffer at work...", expanded=True) as status:
-            st.markdown(
-                self._stage_markup(
-                    self.visuals.ready,
-                    "Sniffer is getting data from Envio Hypersync — fetching on-chain evidence.",
-                    show_loader=True,
-                    stage="fetch",
-                ),
-                unsafe_allow_html=True,
+    def _handle_tool_calls(self, message: Any) -> Any:
+        # Show fetching stage bubble
+        stage_placeholder = st.empty()
+        stage_placeholder.markdown(
+            self._stage_markup(
+                self.visuals.ready,
+                "Sniffer is getting data from Envio Hypersync — fetching on-chain evidence.",
+                show_loader=True,
+                stage="fetch",
+            ),
+            unsafe_allow_html=True,
+        )
+        
+        # Execute tools
+        tool_calls = getattr(message, "tool_calls", None) or []
+        for tool_call in tool_calls:
+            function_name = tool_call.function.name
+            function_args = json.loads(tool_call.function.arguments)
+            tool_result = self.function_map[function_name](**function_args)
+            self._append_history(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": function_name,
+                    "content": tool_result,
+                }
             )
-            tool_calls = getattr(message, "tool_calls", None) or []
-            for tool_call in tool_calls:
-                function_name = tool_call.function.name
-                function_args = json.loads(tool_call.function.arguments)
-                tool_result = self.function_map[function_name](**function_args)
-                self._append_history(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": function_name,
-                        "content": tool_result,
-                    }
-                )
+            # Show tool results in expanders
+            with st.expander("📊 Data Retrieved", expanded=False):
                 self._render_tool_response(tool_result)
-            
-            st.markdown(
-                self._stage_markup(
-                    self.visuals.thinking,
-                    "Sniffer is reviewing the evidence — drafting your investigation brief.",
-                    show_loader=True,
-                    stage="draft",
-                ),
-                unsafe_allow_html=True,
-            )
-            status.update(label="🐕 Analysis complete!", state="complete")
+        
+        # Update to reviewing stage bubble
+        stage_placeholder.markdown(
+            self._stage_markup(
+                self.visuals.thinking,
+                "Sniffer is reviewing the evidence — drafting your investigation brief.",
+                show_loader=True,
+                stage="draft",
+            ),
+            unsafe_allow_html=True,
+        )
+        
+        return stage_placeholder
 
     def _stage_markup(
         self,
@@ -296,8 +302,6 @@ class ChatWidget:
         )
 
     def _inject_spinner_css(self) -> None:
-        if st.session_state["sniffer_spinner_css_injected"]:
-            return
         spinner_css = textwrap.dedent(
             f"""
             <style>
@@ -401,7 +405,6 @@ class ChatWidget:
             """
         )
         st.markdown(spinner_css, unsafe_allow_html=True)
-        st.session_state["sniffer_spinner_css_injected"] = True
 
     def _render_intro(self) -> None:
         history = st.session_state["sniffer_messages"]
@@ -470,6 +473,7 @@ class ChatWidget:
             st.markdown(user_prompt)
 
         with st.chat_message("assistant", avatar=None):
+            stage_placeholder = None
             pending = self.client.chat.completions.create(
                 model=st.secrets["OPENAI_DEPLOYMENT"],
                 messages=self._trimmed_history(),
@@ -483,7 +487,7 @@ class ChatWidget:
 
                 if tool_calls:
                     self._append_history(message.model_dump())
-                    self._handle_tool_calls(message)
+                    stage_placeholder = self._handle_tool_calls(message)
                     pending = self.client.chat.completions.create(
                         model=st.secrets["OPENAI_DEPLOYMENT"],
                         messages=self._trimmed_history(),
@@ -503,6 +507,10 @@ class ChatWidget:
                     assistant_record["stage_show_loader"] = False
                     assistant_record["image_b64"] = self.visuals.ready
                     self._append_history(assistant_record)
+                    
+                    # Clear the reviewing bubble and show final stage
+                    if stage_placeholder:
+                        stage_placeholder.empty()
                     
                     st.markdown(
                         self._stage_markup(
