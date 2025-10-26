@@ -1,7 +1,7 @@
-from mcp_funcs.mcp_hi import say_hi
-from mcp_funcs.mcp_num import get_random_number
-from mcp_funcs.mcp_char import get_random_chars
-from mcp_funcs.mcp_fraud import (
+from .mcp_funcs.mcp_hi import say_hi
+from .mcp_funcs.mcp_num import get_random_number
+from .mcp_funcs.mcp_char import get_random_chars
+from .mcp_funcs.mcp_fraud import (
     event_logs,
     swap_events,
     transaction_analysis,

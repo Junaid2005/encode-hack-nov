@@ -267,12 +267,12 @@ def _to_arrow_safe_dataframe(records: List[Mapping]) -> pd.DataFrame:
 
 
 st.set_page_config(
-    page_title="Sniffer Client",
-    page_icon="🐕‍🦺",
+    page_title="Sniffer MCP Tools",
+    page_icon="�",
     layout="wide",
 )
 
-st.header("Sniffer Client 🐕‍🦺")
+st.header("Sniffer MCP Tools �")
 if not st.session_state.get("sniffer_client_visited", False):
     st.session_state["sniffer_client_visited"] = True
     st.write_stream(stream_data("MCP Interface for HyperSync API ❤️"))

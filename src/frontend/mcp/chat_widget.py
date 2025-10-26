@@ -1,553 +1,516 @@
 import base64
 import json
-import os
-import sys
+import textwrap
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional
 
 import altair as alt
+import pandas as pd
 import streamlit as st
 from openai import AzureOpenAI
-import json
-import sys
-import os
-import logging
-import pandas as pd
 
-sys.path.insert(0, os.path.dirname(__file__))
+from .mcp_schema import MCP_FUNCTION_MAP, MCP_TOOLS
 
-from .mcp_schema import MCP_TOOLS, MCP_FUNCTION_MAP
+
+@dataclass
+class SnifferVisuals:
+    root: Path
+    ready: str = field(init=False)
+    thinking: str = field(init=False)
+    happy: str = field(init=False)
+    fraud: Optional[str] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.ready = self._encode_asset("fraud_detected_sniffer.png")
+        self.thinking = self._encode_asset("thinking_sniffer.png")
+        self.happy = self._encode_asset("happy_sniffer.png")
+        self.fraud = self._encode_asset("fraud_sniffer.png", required=False)
+
+    def _encode_asset(self, asset_name: str, *, required: bool = True) -> str:
+        asset_path = self.root / asset_name
+        if not asset_path.exists():
+            if required:
+                raise FileNotFoundError(asset_path)
+            return ""
+        with asset_path.open("rb") as handle:
+            return base64.b64encode(handle.read()).decode("ascii")
+
+
+@dataclass
+class SnifferMessage:
+    role: str
+    content: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"role": self.role, "content": self.content}
+        return payload
 
 
 class ChatWidget:
+    MODEL_HISTORY_LIMIT = 14
+    IMAGE_WIDTH = 120
+
     def __init__(
         self,
         api_key: str,
-        tools: list = MCP_TOOLS,
-        function_map: dict = MCP_FUNCTION_MAP,
-    ):
-        self.api_key = api_key
+        *,
+        tools: Iterable[Dict[str, Any]] = MCP_TOOLS,
+        function_map: Dict[str, Any] = MCP_FUNCTION_MAP,
+    ) -> None:
+        self.function_map = function_map
+        self.tools = list(tools)
         self.client = AzureOpenAI(
-            api_key=api_key or st.secrets["OPENAI_ENDPOINT"],
+            api_key=api_key or st.secrets["OPENAI_API_KEY"],
             azure_endpoint=st.secrets["OPENAI_ENDPOINT"],
             api_version=st.secrets["OPENAI_VERSION"],
         )
-
-        self.tools = tools
-
-        self.function_map = function_map
-
-        self.system_prompt = (
-            "You are Sniffer, the AI K9 detective for this Streamlit investigation desk—an ever-alert fraud hound who speaks in a professional but friendly tone and occasionally references your canine instincts. "
-            "Before answering, call the appropriate MCP tool to collect evidence. The toolkit includes: "
-            "wallet_activity (multi-wallet baselines, anomaly scores, and counterparty overlays), "
-            "event_logs (contract event anomaly detection), swap_events (price-impact and wash-trade surveillance), "
-            "and transaction_analysis (single-transaction decoding and risk scoring). "
-            "For every response after running a tool, deliver:\n"
-            "1) a plain-language narrative describing the suspicious behaviour and who is impacted,\n"
-            "2) a breakdown of detection methods used (z-score baselines, centrality, price impact, wash-trade counts, etc.) and what each reveals,\n"
-            "3) the key indicators or risk factors with severity and why they matter, and\n"
-            "4) specific next steps or clarifying questions to advance the investigation. "
-            "Explain technical metrics in everyday language so non-technical investigators understand the implications. "
-            "Always confirm the block scope: if the user does not provide a starting block or block range, ask for it before invoking a tool. "
-            "If any other required parameters are missing, ask concise clarification questions before proceeding."
-        )
-
-        # Initialize session state
-        if "messages" not in st.session_state:
-            st.session_state.messages = [
-                {
-                    "role": "system",
-                    "content": self.system_prompt,
-                }
-            ]
-        elif (
-            not st.session_state.messages
-            or st.session_state.messages[0].get("role") != "system"
-        ):
-            st.session_state.messages.insert(
-                0,
-                {
-                    "role": "system",
-                    "content": self.system_prompt,
-                },
-            )
-
         asset_root = Path(__file__).resolve().parents[2] / "src"
         if not asset_root.exists():
             asset_root = Path(__file__).resolve().parents[2]
-        self.image_ready_b64 = self._encode_image(
-            asset_root / "fraud_detected_sniffer.png"
+        self.visuals = SnifferVisuals(root=asset_root)
+        self.image_display_width = 110
+        self.system_prompt = (
+            "You are Sniffer, the AI K9 detective for this Streamlit investigation desk—an ever-alert fraud hound who speaks in a professional but friendly tone and occasionally references your canine instincts. "
+            "Before answering, call the appropriate MCP tool to collect evidence. The toolkit includes: "
+            "wallet_activity (multi-wallet baselines, anomaly scores, and counterparty overlays), event_logs (contract event anomaly detection), swap_events (price-impact and wash-trade surveillance), and transaction_analysis (single-transaction decoding and risk scoring). "
+            "For every response after running a tool, deliver: 1) a plain-language narrative describing the suspicious behaviour and who is impacted, 2) a breakdown of detection methods used (z-score baselines, centrality, price impact, wash-trade counts, etc.) and what each reveals, 3) the key indicators or risk factors with severity and why they matter, and 4) specific next steps or clarifying questions to advance the investigation. "
+            "Explain technical metrics in everyday language so non-technical investigators understand the implications. Always confirm the block scope: if the user does not provide a starting block or block range, ask for it before invoking a tool. If any other required parameters are missing, ask concise clarification questions before proceeding."
         )
-        self.image_thinking_b64 = self._encode_image(
-            asset_root / "thinking_sniffer.png"
-        )
-        self.image_happy_b64 = self._encode_image(asset_root / "happy_sniffer.png")
-        fraud_image_path = asset_root / "fraud_sniffer.png"
-        self.image_fraud_b64 = (
-            self._encode_image(fraud_image_path) if fraud_image_path.exists() else ""
-        )
-        self.image_display_width = 180
-        self.model_history_limit = 14
-        self.pending_hypersync_banner = False
+        self._ensure_state()
 
-        logging.getLogger("httpx").setLevel(logging.WARNING)
-        logging.getLogger("httpcore").setLevel(logging.WARNING)
+    # ------------------------------------------------------------------
+    # Session state helpers
+    # ------------------------------------------------------------------
+    def _ensure_state(self) -> None:
+        messages = st.session_state.setdefault("sniffer_messages", [])
+        if not messages:
+            messages.append(SnifferMessage("system", self.system_prompt).to_dict())
+        elif messages[0].get("role") != "system":
+            messages.insert(0, SnifferMessage("system", self.system_prompt).to_dict())
+        st.session_state.setdefault("sniffer_history", [])
+        st.session_state.setdefault("sniffer_spinner_css_injected", False)
 
-        if not st.session_state.get("sniffer_intro_inserted"):
-            intro_text = (
-                "**Sniffer reporting for duty!**\n"
-                "Share a wallet, contract, pool, or transaction hash and I'll fetch the data, sniff for anomalies, and chart anything suspicious."
-            )
-            st.session_state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": intro_text,
-                    "image_b64": self.image_happy_b64,
-                    "image_caption": "Sniffer is ready to investigate!",
-                    "image_width": self.image_display_width,
-                }
-            )
-            st.session_state["sniffer_intro_inserted"] = True
-
-        self.spinner_css = f"""
-        <style>
-        .sniffer-visual {{
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            align-items: center;
-            min-height: 300px;
-            gap: 12px;
-            text-align: center;
-        }}
-        .sniffer-visual img {{
-            width: {self.image_display_width}px;
-            max-width: 100%;
-            height: auto;
-            filter: drop-shadow(0 12px 32px rgba(0, 0, 0, 0.45));
-        }}
-        .sniffer-visual .sniffer-stage-caption {{
-            margin-top: 16px;
-            padding: 12px 20px;
-            display: inline-block;
-            border-radius: 999px;
-            font-size: 1rem;
-            font-weight: 600;
-            letter-spacing: 0.4px;
-            background: linear-gradient(135deg, #1f3b65, #0f1b2e);
-            color: #f5f7fb;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 8px 24px rgba(15, 27, 46, 0.45);
-        }}
-        .sniffer-visual .sniffer-stage-caption span {{
-            background: linear-gradient(135deg, #2f6bff, #8b47ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }}
-        .sniffer-intro-caption {{
-            margin-top: 0.6rem;
-            font-size: 0.92rem;
-            letter-spacing: 0.2px;
-            color: rgba(236, 241, 255, 0.75);
-        }}
-        .sniffer-thinking-loader {{
-            margin-top: 14px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }}
-        .sniffer-thinking-loader span {{
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #2f6bff, #8b47ff);
-            box-shadow: 0 0 12px rgba(143, 71, 255, 0.6);
-            animation: snifferPulse 1.2s ease-in-out infinite;
-        }}
-        .sniffer-thinking-loader span:nth-child(2) {{
-            animation-delay: 0.15s;
-        }}
-        .sniffer-thinking-loader span:nth-child(3) {{
-            animation-delay: 0.3s;
-        }}
-        .sniffer-thinking-loader + .sniffer-thinking-loader {{
-            margin-top: 0.4rem;
-        }}
-        .sniffer-thinking-wall {{
-            display: flex;
-            justify-content: center;
-            margin-top: 0.35rem;
-        }}
-        .sniffer-thinking-text {{
-            margin: 0;
-            text-align: center;
-            color: rgba(236, 241, 255, 0.9);
-            font-size: 0.95rem;
-            letter-spacing: 0.25px;
-        }}
-        .sniffer-hypersync-banner {{
-            display: flex;
-            justify-content: center;
-            margin-bottom: 1rem;
-        }}
-        .sniffer-hypersync-card {{
-            display: inline-flex;
-            align-items: center;
-            gap: 14px;
-            padding: 12px 22px;
-            border-radius: 999px;
-            background: linear-gradient(135deg, #1f3b65, #0f1b2e);
-            color: #f5f7fb;
-            box-shadow: 0 8px 24px rgba(15, 27, 46, 0.45);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-        }}
-        .sniffer-hypersync-card img {{
-            width: 44px;
-            height: auto;
-            filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.35));
-        }}
-        .sniffer-hypersync-card-text {{
-            font-size: 0.98rem;
-            font-weight: 600;
-            letter-spacing: 0.35px;
-        }}
-        .sniffer-hypersync-card-text span {{
-            background: linear-gradient(135deg, #2f6bff, #8b47ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }}
-        #sniffer-chat-wrapper {{
-            max-height: 70vh;
-            overflow-y: auto;
-            padding-right: 4px;
-            scroll-behavior: smooth;
-        }}
-        </style>
-        <script>
-        const scrollSnifferChat = () => {{
-            try {{
-                const doc = window.parent && window.parent.document ? window.parent.document : document;
-                const log = doc.querySelector('#sniffer-chat-log');
-                if (log) {{
-                    log.scrollTo({{ top: log.scrollHeight, behavior: 'smooth' }});
-                }}
-            }} catch (err) {{
-                // ignore cross-origin issues
-            }}
-        }};
-        window.setTimeout(scrollSnifferChat, 200);
-        </script>
-        """
-
+    # ------------------------------------------------------------------
+    # UI helpers
+    # ------------------------------------------------------------------
     @staticmethod
-    def _encode_image(path: Path) -> str:
-        with path.open("rb") as handle:
-            return base64.b64encode(handle.read()).decode("ascii")
-
-    def _build_chart(self, chart_payload):
+    def _encode_chart(chart_payload: Dict[str, Any]) -> Optional[alt.Chart]:
         data = chart_payload.get("data")
-        spec = chart_payload.get("spec") or {}
+        spec = chart_payload.get("spec")
         if not data or not spec:
             return None
-
-        # Convert data to DataFrame for better Altair compatibility
         df = pd.DataFrame(data)
-
-        # Get mark and encoding from spec
         mark = spec.get("mark", {"type": "bar"})
-        encoding = spec.get("encoding", {})
-
-        # Build chart using Altair's API directly
+        encoding_spec = spec.get("encoding", {})
         chart = (
             alt.Chart(df).mark_bar()
-            if mark.get("type") == "bar"
+            if str(mark.get("type", "")).lower() == "bar"
             else alt.Chart(df).mark_point()
         )
 
-        # Apply encoding
-        if encoding:
-            chart = chart.encode(
-                **{
-                    k: (
-                        alt.X(v["field"])
-                        if k == "x" and isinstance(v, dict) and "field" in v
-                        else (
-                            alt.Y(v["field"])
-                            if k == "y" and isinstance(v, dict) and "field" in v
-                            else v
-                        )
-                    )
-                    for k, v in encoding.items()
-                }
-            )
+        def _to_channel(key: str, value: Any) -> Any:
+            if key == "tooltip" and isinstance(value, list):
+                tooltips = []
+                for item in value:
+                    if isinstance(item, dict) and "field" in item:
+                        kwargs = {k: v for k, v in item.items() if k != "field"}
+                        tooltips.append(alt.Tooltip(item["field"], **kwargs))
+                    else:
+                        tooltips.append(item)
+                return tooltips
+            if not isinstance(value, dict) or "field" not in value:
+                return value
+            kwargs = {k: v for k, v in value.items() if k != "field"}
+            channel_map = {
+                "x": alt.X,
+                "y": alt.Y,
+                "color": alt.Color,
+                "size": alt.Size,
+                "shape": alt.Shape,
+                "column": alt.Column,
+                "row": alt.Row,
+                "tooltip": alt.Tooltip,
+            }
+            factory = channel_map.get(key)
+            if factory is None:
+                return value
+            return factory(value["field"], **kwargs)
 
-        # Add title
+        encoded = {key: _to_channel(key, value) for key, value in encoding_spec.items()}
+        if encoded:
+            chart = chart.encode(**encoded)
+
+        width = spec.get("width", "container")
+        height = spec.get("height", 400)
+        chart = chart.properties(width=width, height=height)
         title = chart_payload.get("title")
         if title:
             chart = chart.properties(title=title)
-
-        # Add dimensions if specified
-        width = spec.get("width", "container")
-        height = spec.get("height", 400)  # Default to 400px height
-        chart = chart.properties(width=width, height=height)
-
         return chart
 
-    def _render_chart(self, target, chart_obj):
-        if chart_obj is None:
-            target.warning("Chart object is None")
+    def _render_chart(self, chart_payload: Dict[str, Any]) -> None:
+        chart_obj = self._encode_chart(chart_payload)
+        if not chart_obj:
+            st.info("Chart requested, but no data returned.")
             return
         try:
-            # Try using use_container_width first (more compatible)
-            target.altair_chart(chart_obj, use_container_width=True)
-        except Exception as e:
-            target.error(f"Failed to render chart: {str(e)}")
+            st.altair_chart(chart_obj, use_container_width=True)
+        except Exception as exc:  # pragma: no cover - UI fails safe
+            st.error(f"Unable to render chart: {exc}")
 
-    def _render_tool_output(self, content: str, container=None):
-        target = container or st
+    def _render_tool_response(self, tool_content: str) -> None:
         try:
-            payload = json.loads(content)
+            payload = json.loads(tool_content)
         except (TypeError, json.JSONDecodeError):
-            target.markdown(content)
+            st.markdown(tool_content)
             return
-
-        if self.pending_hypersync_banner:
-            target.markdown(
-                f"""
-                <div class="sniffer-hypersync-banner">
-                    <div class="sniffer-hypersync-card">
-                        <img src="data:image/png;base64,{self.image_ready_b64}" alt="Sniffer fetching data" />
-                        <div class="sniffer-hypersync-card-text"><span>Sniffer</span> is getting data from Envio Hypersync — fetching on-chain evidence.</div>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            self.pending_hypersync_banner = False
 
         summary = payload.get("summary")
         if summary:
-            summary_expander = target.expander("Summary", expanded=False)
-            summary_expander.json(summary)
+            with st.expander("Summary", expanded=False):
+                st.json(summary)
 
         alerts = payload.get("alerts") or []
         if alerts:
-            alerts_expander = target.expander("Alerts", expanded=False)
-            alerts_expander.table(alerts)
+            with st.expander("Alerts", expanded=False):
+                st.table(alerts)
 
         metrics = payload.get("metrics")
         if metrics:
-            metrics_expander = target.expander("Metrics", expanded=False)
-            metrics_expander.json(metrics)
+            with st.expander("Metrics", expanded=False):
+                st.json(metrics)
 
-        data_records = payload.get("data")
-        if data_records:
-            data_expander = target.expander("Records", expanded=False)
-            data_expander.dataframe(data_records)
+        records = payload.get("data")
+        if records:
+            with st.expander("Records", expanded=False):
+                st.dataframe(records)
+
+        narrative = payload.get("narrative")
+        if narrative:
+            st.markdown(narrative)
+
+        charts = payload.get("charts") or []
+        for chart_payload in charts:
+            self._render_chart(chart_payload)
+            description = chart_payload.get("description")
+            if description:
+                st.caption(description)
 
         suspected_fraud = False
         if summary:
             verdict = str(summary.get("verdict", "")).lower()
             severity = str(summary.get("severity", "")).lower()
-            suspected_fraud = verdict not in {"", "clear"} or severity in {
-                "medium",
-                "high",
-            }
-
-        if suspected_fraud and self.image_fraud_b64:
-            try:
-                image_bytes = base64.b64decode(self.image_fraud_b64)
-                target.image(
-                    image_bytes,
-                    caption="Sniffer raised a fraud alert.",
-                    width=self.image_display_width,
-                )
-            except Exception:
-                target.warning("Fraud visual unavailable, but alerts were triggered.")
-
-        narrative = payload.get("narrative")
-        if narrative:
-            target.markdown(narrative)
-
-        charts = payload.get("charts") or []
-        chart_count = payload.get("chart_count", 0)
-        chart_rendered = False
-        for chart_payload in charts:
-            chart_obj = self._build_chart(chart_payload)
-            if not chart_obj:
-                continue
-            self._render_chart(target, chart_obj)
-            description = chart_payload.get("description")
-            if description:
-                target.caption(description)
-            chart_rendered = True
-        if charts and not chart_rendered and chart_count:
-            target.info(
-                "Charts were requested but no datapoints were returned by the tool."
+            suspected_fraud = verdict not in {"", "clear"} or severity in {"medium", "high"}
+        if suspected_fraud and self.visuals.fraud:
+            st.image(
+                base64.b64decode(self.visuals.fraud),
+                caption="Sniffer raised a fraud alert.",
+                width=self.IMAGE_WIDTH,
             )
-        elif chart_count == 0:
-            target.caption("No chartable datapoints were returned for this response.")
 
-    def _prune_history(self, history):
-        if len(history) <= self.model_history_limit:
+        chart_count = payload.get("chart_count")
+        if chart_count == 0:
+            st.caption("No chartable datapoints returned.")
+
+    # ------------------------------------------------------------------
+    # History helpers
+    # ------------------------------------------------------------------
+    def _append_history(self, message: Dict[str, Any]) -> None:
+        history = st.session_state["sniffer_messages"]
+        history.append(message)
+
+    def _trimmed_history(self) -> List[Dict[str, Any]]:
+        history = st.session_state["sniffer_messages"]
+        if len(history) <= self.MODEL_HISTORY_LIMIT:
             return history
         trimmed = [history[0]]
-        trimmed.extend(history[-(self.model_history_limit - 1) :])
+        trimmed.extend(history[-(self.MODEL_HISTORY_LIMIT - 1) :])
         return trimmed
 
-    def display_messages(self):
-        """Display chat messages"""
-        if not st.session_state.get("sniffer_spinner_css_injected"):
-            st.markdown(self.spinner_css, unsafe_allow_html=True)
-            st.session_state["sniffer_spinner_css_injected"] = True
-        chat_container = st.container()
-        with chat_container:
+    # ------------------------------------------------------------------
+    # Core chat loop
+    # ------------------------------------------------------------------
+    def _handle_tool_calls(self, message: Any) -> None:
+        with st.status("🐕 Sniffer at work...", expanded=True) as status:
             st.markdown(
-                "<div id='sniffer-chat-wrapper'><div id='sniffer-chat-log'>",
+                self._stage_markup(
+                    self.visuals.ready,
+                    "Sniffer is getting data from Envio Hypersync — fetching on-chain evidence.",
+                    show_loader=True,
+                    stage="fetch",
+                ),
                 unsafe_allow_html=True,
             )
-            for message in st.session_state.messages:
-                if isinstance(message, dict):
-                    role = message["role"]
-                    if role == "system":
-                        continue
-                    display_role = "assistant" if role == "tool" else role
-
-                    with st.chat_message(display_role):
-                        if role == "tool":
-                            st.markdown("**🐶 Sniffer**")
-                            self._render_tool_output(message["content"])
-                        else:
-                            image_b64 = message.get("image_b64")
-                            if image_b64:
-                                try:
-                                    image_width = message.get("image_width")
-                                    if image_width is None:
-                                        st.markdown(
-                                            f"""
-                                            <div class="sniffer-visual">
-                                                <img style="width: {self.image_display_width}px; max-width: 100%; height: auto;" src="data:image/png;base64,{image_b64}" alt="Sniffer ready" />
-                                                <div class="sniffer-stage-caption"><span>Sniffer</span> is ready to investigate!</div>
-                                                <div class="sniffer-intro-caption">Share a wallet, contract, pool, or transaction hash and I’ll fetch the data, sniff for anomalies, and chart anything suspicious.</div>
-                                            </div>
-                                            """,
-                                            unsafe_allow_html=True,
-                                        )
-                                    else:
-                                        st.image(
-                                            base64.b64decode(image_b64),
-                                            caption=message.get("image_caption"),
-                                            width=image_width,
-                                        )
-                                except Exception:
-                                    st.warning("Unable to display Sniffer visual.")
-                            st.markdown(message["content"])
+            tool_calls = getattr(message, "tool_calls", None) or []
+            for tool_call in tool_calls:
+                function_name = tool_call.function.name
+                function_args = json.loads(tool_call.function.arguments)
+                tool_result = self.function_map[function_name](**function_args)
+                self._append_history(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": function_name,
+                        "content": tool_result,
+                    }
+                )
+                self._render_tool_response(tool_result)
+            
             st.markdown(
-                "<div id='sniffer-chat-sentinel'></div></div></div>",
+                self._stage_markup(
+                    self.visuals.thinking,
+                    "Sniffer is reviewing the evidence — drafting your investigation brief.",
+                    show_loader=True,
+                    stage="draft",
+                ),
                 unsafe_allow_html=True,
             )
+            status.update(label="🐕 Analysis complete!", state="complete")
 
-    def chat_with_tools(self):
-        """Handle chat with tool calling"""
+    def _stage_markup(
+        self,
+        image_b64: str,
+        caption: str,
+        *,
+        show_loader: bool = False,
+        stage: str | None = None,
+    ) -> str:
+        stage_class = f" stage--{stage}" if stage else ""
+        caption_html = caption.replace(
+            "Sniffer", "<span class='sniffer-stage-highlight'>Sniffer</span>", 1
+        )
+        loader_html = (
+            "<div class='sniffer-stage-loader'><span></span><span></span><span></span></div>"
+            if show_loader
+            else ""
+        )
+        return (
+            "<div class='sniffer-visual'>"
+            f"<div class='sniffer-stage-bubble{stage_class}'>"
+            f"<img class='sniffer-stage-icon' src='data:image/png;base64,{image_b64}' alt='Sniffer stage icon' />"
+            f"<div class='sniffer-stage-text'>{caption_html}</div>"
+            f"{loader_html}"
+            "</div>"
+            "</div>"
+        )
+
+    def _inject_spinner_css(self) -> None:
+        if st.session_state["sniffer_spinner_css_injected"]:
+            return
+        spinner_css = textwrap.dedent(
+            f"""
+            <style>
+            .sniffer-visual {{
+                display: flex;
+                flex-direction: column;
+                justify-content: flex-end;
+                align-items: center;
+                min-height: 120px;
+                gap: 10px;
+                text-align: center;
+            }}
+            .sniffer-stage-bubble {{
+                display: inline-flex;
+                align-items: center;
+                gap: 12px;
+                padding: 8px 18px;
+                border-radius: 999px;
+                background: linear-gradient(135deg, #192e4c, #0f1d33);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                box-shadow: 0 8px 24px rgba(15, 27, 46, 0.45);
+            }}
+            .sniffer-stage-bubble.stage--fetch {{
+                background: linear-gradient(135deg, #1c3156, #0f1d33);
+            }}
+            .sniffer-stage-bubble.stage--draft {{
+                background: linear-gradient(135deg, #221c49, #121c3a);
+            }}
+            .sniffer-stage-bubble.stage--deliver {{
+                background: linear-gradient(135deg, #1f3b65, #142b49);
+            }}
+            .sniffer-stage-icon {{
+                width: 28px;
+                height: 28px;
+                border-radius: 8px;
+                filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.35));
+            }}
+            .sniffer-stage-text {{
+                font-size: 0.92rem;
+                font-weight: 600;
+                letter-spacing: 0.3px;
+                color: #f5f7fb;
+            }}
+            .sniffer-stage-highlight {{
+                background: linear-gradient(135deg, #2f6bff, #8b47ff);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }}
+            .sniffer-stage-loader {{
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }}
+            .sniffer-stage-loader span {{
+                width: 9px;
+                height: 9px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #2f6bff, #8b47ff);
+                box-shadow: 0 0 10px rgba(143, 71, 255, 0.6);
+                animation: snifferPulse 1.2s ease-in-out infinite;
+            }}
+            .sniffer-stage-loader span:nth-child(2) {{
+                animation-delay: 0.15s;
+            }}
+            .sniffer-stage-loader span:nth-child(3) {{
+                animation-delay: 0.3s;
+            }}
+            .sniffer-thinking-loader,
+            .sniffer-thinking-loader span,
+            .sniffer-thinking-wall {{
+                display: none !important;
+            }}
+            .sniffer-intro-caption {{
+                margin-top: 0.6rem;
+                font-size: 0.92rem;
+                letter-spacing: 0.2px;
+                color: rgba(236, 241, 255, 0.75);
+            }}
+            #sniffer-chat-wrapper {{
+                max-height: 70vh;
+                overflow-y: auto;
+                padding-right: 4px;
+                scroll-behavior: smooth;
+            }}
+            </style>
+            <script>
+            const scrollSnifferChat = () => {{
+                try {{
+                    const doc = window.parent && window.parent.document ? window.parent.document : document;
+                    const log = doc.querySelector('#sniffer-chat-log');
+                    if (log) {{
+                        log.scrollTo({{ top: log.scrollHeight, behavior: 'smooth' }});
+                    }}
+                }} catch (err) {{
+                    // ignore cross-origin issues
+                }}
+            }};
+            window.setTimeout(scrollSnifferChat, 200);
+            </script>
+            """
+        )
+        st.markdown(spinner_css, unsafe_allow_html=True)
+        st.session_state["sniffer_spinner_css_injected"] = True
+
+    def _render_intro(self) -> None:
+        history = st.session_state["sniffer_messages"]
+        if st.session_state.get("sniffer_intro_shown"):
+            return
+        intro_message = SnifferMessage(
+            "assistant",
+            "**Sniffer reporting for duty!**\nShare a wallet, contract, pool, or transaction hash and I'll fetch the data, sniff for anomalies, and chart anything suspicious.",
+        )
+        history.append({
+            "role": "assistant",
+            "content": intro_message.content,
+            "image_b64": self.visuals.happy,
+        })
+        st.session_state["sniffer_intro_shown"] = True
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    def render(self) -> None:
+        self._inject_spinner_css()
+        self._render_intro()
+        self._display_history()
+        self._chat_loop()
+
+    def _display_history(self) -> None:
+        for message in st.session_state["sniffer_messages"]:
+            role = message.get("role")
+            if role in {"system", "tool"}:
+                continue
+            with st.chat_message(role or "assistant"):
+                stage_caption = message.get("stage_caption")
+                stage_image_b64 = message.get("stage_image_b64") or message.get("image_b64")
+                stage_name = message.get("stage")
+                show_stage_loader = bool(message.get("stage_show_loader"))
+
+                if stage_caption and stage_image_b64:
+                    st.markdown(
+                        self._stage_markup(
+                            stage_image_b64,
+                            stage_caption,
+                            show_loader=show_stage_loader,
+                            stage=stage_name,
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    image_b64 = message.get("image_b64")
+                    if image_b64:
+                        st.image(base64.b64decode(image_b64), width=self.IMAGE_WIDTH)
+                content = message.get("content")
+                if content:
+                    st.markdown(content)
+
+    def _chat_loop(self) -> None:
         user_prompt = st.chat_input(
             "Try: 'Analyze wallet activity for 0x...', 'Scan swap events for pool ...', or 'Review tx hash ...'"
         )
-        if user_prompt:
-            # Add user message
-            st.session_state.messages.append({"role": "user", "content": user_prompt})
+        if not user_prompt:
+            return
 
-            # Display user message
-            with st.chat_message("user"):
-                st.markdown(user_prompt)
+        user_message = SnifferMessage("user", user_prompt).to_dict()
+        self._append_history(user_message)
 
-            # Get AI response with tool calling
-            with st.chat_message("assistant", avatar="🐶"):
-                st.markdown(self.spinner_css, unsafe_allow_html=True)
-                tool_output_container = st.container()
-                stage_placeholder = st.empty()
-                trimmed_messages = self._prune_history(st.session_state.messages)
+        with st.chat_message("user"):
+            st.markdown(user_prompt)
 
-                response = self.client.chat.completions.create(
-                    model=st.secrets["OPENAI_DEPLOYMENT"],
-                    messages=trimmed_messages,
-                    tools=self.tools,
-                    tool_choice="auto",
+        with st.chat_message("assistant", avatar=None):
+            pending = self.client.chat.completions.create(
+                model=st.secrets["OPENAI_DEPLOYMENT"],
+                messages=self._trimmed_history(),
+                tools=self.tools,
+                tool_choice="auto",
                 )
 
-                while True:
-                    message = response.choices[0].message
+            while True:
+                message = pending.choices[0].message
+                tool_calls = getattr(message, "tool_calls", None) or []
 
-                    if message.tool_calls:
-                        stage_placeholder.markdown(
-                            f"""
-                            <div class="sniffer-visual">
-                                <img style="width: {self.image_display_width}px; max-width: 100%; height: auto;" src="data:image/png;base64,{self.image_ready_b64}" alt="Sniffer querying Envio Hypersync" />
-                                <div class="sniffer-stage-caption"><span>Sniffer</span> is getting data from Envio Hypersync — fetching on-chain evidence.</div>
-                                <div class='sniffer-thinking-wall'>
-                                    <div class='sniffer-thinking-loader'><span></span><span></span><span></span></div>
-                                </div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
+                if tool_calls:
+                    self._append_history(message.model_dump())
+                    self._handle_tool_calls(message)
+                    pending = self.client.chat.completions.create(
+                        model=st.secrets["OPENAI_DEPLOYMENT"],
+                        messages=self._trimmed_history(),
+                        tools=self.tools,
+                        tool_choice="auto",
                         )
-                        self.pending_hypersync_banner = True
-                        st.session_state.messages.append(message)
+                    continue
 
-                        trimmed_messages = self._prune_history(
-                            st.session_state.messages
-                        )
-
-                        for tool_call in message.tool_calls:
-                            function_name = tool_call.function.name
-                            function_args = json.loads(tool_call.function.arguments)
-
-                            function_result = self.function_map[function_name](
-                                **function_args
-                            )
-
-                            tool_message = {
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": function_result,
-                            }
-                            st.session_state.messages.append(tool_message)
-                            self._render_tool_output(
-                                function_result, tool_output_container
-                            )
-
-                        trimmed_messages = self._prune_history(
-                            st.session_state.messages
-                        )
-
-                        response = self.client.chat.completions.create(
-                            model=st.secrets["OPENAI_DEPLOYMENT"],
-                            messages=trimmed_messages,
-                            tools=self.tools,
-                            tool_choice="auto",
-                        )
-                        continue
-
-                    if message.content:
-                        stage_placeholder.empty()
-                        visual_markup = f"""
-                            <div class="sniffer-visual">
-                                <img style="width: {self.image_display_width}px; max-width: 100%; height: auto;" src="data:image/png;base64,{self.image_happy_b64}" alt="Sniffer reports ready" />
-                                <div class="sniffer-stage-caption">📬 <span>Sniffer</span> fetched the findings — report ready for review.</div>
-                            </div>
-                            """
-                        st.markdown(visual_markup, unsafe_allow_html=True)
-                        st.markdown(message.content)
-                        st.session_state.messages.append(
-                            {
-                                "role": "assistant",
-                                "content": message.content,
-                            }
-                        )
+                content = getattr(message, "content", None)
+                if content:
+                    assistant_record = message.model_dump()
+                    assistant_record["stage_caption"] = (
+                        "Sniffer is getting data from Envio Hypersync — fetching on-chain evidence."
+                    )
+                    assistant_record["stage_image_b64"] = self.visuals.ready
+                    assistant_record["stage"] = "fetch"
+                    assistant_record["stage_show_loader"] = False
+                    assistant_record["image_b64"] = self.visuals.ready
+                    self._append_history(assistant_record)
+                    
+                    st.markdown(
+                        self._stage_markup(
+                            self.visuals.ready,
+                            "Sniffer is getting data from Envio Hypersync — fetching on-chain evidence.",
+                            stage="fetch",
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(content)
                     break
-
-    def render(self):
-        """Render the complete chat widget"""
-        self.display_messages()
-        self.chat_with_tools()

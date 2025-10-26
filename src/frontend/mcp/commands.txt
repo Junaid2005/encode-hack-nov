@@ -1,0 +1,5 @@
+Explain the risk profile of hash "0x935D2e470284Fb536227A76A723F96a94eFaE6A9" and list triggered risk factors.”
+
+Give me counterparties and severity scores for address 0x935D2e470284Fb536227A76A723F96a94eFaE6A9 since block 23653713
+
+Analyze wallet activity for "0x935D2e470284Fb536227A76A723F96a94eFaE6A9" starting from block 23653713 with z-threshold 2.5

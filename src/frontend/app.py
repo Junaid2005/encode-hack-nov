@@ -23,8 +23,8 @@ st.set_page_config(
 )
 
 home_page = st.Page("sniffer_home.py", title="Sniffer Home", icon="🏠")
-core_page = st.Page("sniffer_core.py", title="Sniffer Core", icon="🐶")
-client_page = st.Page("sniffer_client.py", title="Sniffer Client", icon="🐕‍🦺")
+core_page = st.Page("sniffer_core.py", title="Sniffer AI", icon="🐶")
+client_page = st.Page("sniffer_client.py", title="Sniffer MCP Tools", icon="🔧")
 
 # Create navigation
 pg = st.navigation([home_page, core_page, client_page])
