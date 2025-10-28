@@ -1,7 +1,10 @@
+import os
+import time
+
 import streamlit as st
+
 from crypto_widgets import show_crypto_data
 from mcp.chat_widget import ChatWidget
-import time
 
 
 def stream_data(text):
@@ -27,7 +30,7 @@ with st.spinner("Fetching market context..."):
     show_crypto_data()
 
 chat_widget = ChatWidget(
-    api_key=st.secrets["OPENAI_API_KEY"],
+    api_key=st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY"),
 )
 
 chat_widget.render()

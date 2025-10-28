@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -8,7 +9,7 @@ from typing import Any, Dict, Iterable, List, Optional
 import altair as alt
 import pandas as pd
 import streamlit as st
-from openai import AzureOpenAI
+from openai import OpenAI
 
 from .mcp_schema import MCP_FUNCTION_MAP, MCP_TOOLS
 
@@ -53,18 +54,32 @@ class ChatWidget:
 
     def __init__(
         self,
-        api_key: str,
+        api_key: Optional[str],
         *,
         tools: Iterable[Dict[str, Any]] = MCP_TOOLS,
         function_map: Dict[str, Any] = MCP_FUNCTION_MAP,
     ) -> None:
         self.function_map = function_map
         self.tools = list(tools)
-        self.client = AzureOpenAI(
-            api_key=api_key or st.secrets["OPENAI_API_KEY"],
-            azure_endpoint=st.secrets["OPENAI_ENDPOINT"],
-            api_version=st.secrets["OPENAI_VERSION"],
-        )
+        # self.client = AzureOpenAI(
+        #     api_key=api_key or st.secrets["OPENAI_API_KEY"],
+        #     azure_endpoint=st.secrets["OPENAI_ENDPOINT"],
+        #     api_version=st.secrets["OPENAI_VERSION"],
+        # )
+        api_key_value = api_key or st.secrets.get("OPENAI_API_KEY")
+        if not api_key_value:
+            api_key_value = os.environ.get("OPENAI_API_KEY")
+        if not api_key_value:
+            raise RuntimeError(
+                "OPENAI_API_KEY is not configured. Set it in Streamlit secrets or as an environment variable."
+            )
+        self.client = OpenAI(api_key=api_key_value)
+        self.model_name = (
+            st.secrets.get("OPENAI_MODEL"))
+        if not self.model_name:
+            raise RuntimeError(
+                "OPENAI_MODEL/OPENAI_DEPLOYMENT is not configured. Define it in Streamlit secrets or environment variables."
+            )
         asset_root = Path(__file__).resolve().parents[2] / "src"
         if not asset_root.exists():
             asset_root = Path(__file__).resolve().parents[2]
@@ -475,7 +490,7 @@ class ChatWidget:
         with st.chat_message("assistant", avatar=None):
             stage_placeholder = None
             pending = self.client.chat.completions.create(
-                model=st.secrets["OPENAI_DEPLOYMENT"],
+                model=self.model_name,
                 messages=self._trimmed_history(),
                 tools=self.tools,
                 tool_choice="auto",
@@ -489,7 +504,7 @@ class ChatWidget:
                     self._append_history(message.model_dump())
                     stage_placeholder = self._handle_tool_calls(message)
                     pending = self.client.chat.completions.create(
-                        model=st.secrets["OPENAI_DEPLOYMENT"],
+                        model=self.model_name,
                         messages=self._trimmed_history(),
                         tools=self.tools,
                         tool_choice="auto",

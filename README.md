@@ -18,11 +18,11 @@ Made with ❤️ by **Abdul**, **Junaid**, and **Walid** for Encode Hackathon (N
 
 ## 🎯 Overview
 
-**Sniffer** is your K9 detective for blockchain fraud 🐶🔍. It combines cutting-edge AI (GPT-5) with powerful blockchain analytics to help investigators identify suspicious wallet activity, contract exploits, swap manipulation, and transaction fraud—all through a simple chat interface.
+**Sniffer** is your K9 detective for blockchain fraud 🐶🔍. It combines cutting-edge AI (OpenAI GPT) with powerful blockchain analytics to help investigators identify suspicious wallet activity, contract exploits, swap manipulation, and transaction fraud—all through a simple chat interface.
 
 ### Key Highlights
 
-- 🤖 **AI-Powered Analysis**: Natural language queries powered by Azure OpenAI
+- 🤖 **AI-Powered Analysis**: Natural language queries powered by OpenAI GPT models
 - ⚡ **Real-Time Data**: Direct integration with Envio HyperSync for fast Ethereum data access
 - 📊 **Statistical Fraud Detection**: Z-score anomalies, network centrality, CUSUM trends
 - 💬 **Chat Interface**: Conversational investigation workflow—just ask Sniffer!
@@ -37,7 +37,7 @@ Made with ❤️ by **Abdul**, **Junaid**, and **Walid** for Encode Hackathon (N
 
 - Python 3.12 or higher
 - pip package manager
-- Azure OpenAI API access (for GPT-5)
+- OpenAI API access
 - Git
 
 ### Installation
@@ -65,14 +65,12 @@ pip install -r requirements.txt
 Create a `.streamlit/secrets.toml` file in the project root:
 
 ```toml
-# Azure OpenAI Configuration
-OPENAI_API_KEY = "your-azure-openai-api-key"
-OPENAI_ENDPOINT = "https://your-endpoint.openai.azure.com/"
-OPENAI_VERSION = "2024-02-15-preview"
-OPENAI_DEPLOYMENT = "GPT-5"
+# OpenAI Configuration
+OPENAI_API_KEY = "your-openai-api-key"
+OPENAI_MODEL = "gpt-4o-mini"
 ```
 
-> **Note**: Replace the placeholder values with your actual Azure OpenAI credentials.
+> **Note**: Replace the placeholder values with your actual OpenAI credentials.
 
 ### Run the Application
 
@@ -154,7 +152,7 @@ Browse available analysis tools:
 - **Pandas** - Data manipulation
 
 **AI/LLM**
-- **Azure OpenAI (GPT-5)** - Natural language understanding
+- **OpenAI GPT** - Natural language understanding
 - **Function Calling** - AI → Blockchain tool invocation
 
 **Blockchain**
@@ -360,7 +358,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 ## 🙏 Acknowledgments
 
 - **Envio HyperSync** - Lightning-fast Ethereum data indexing
-- **Azure OpenAI** - Powering the AI analysis
+- **OpenAI** - Powering the AI analysis
 - **Streamlit** - Making web apps delightfully simple
 - **Encode Hackathon** - For the amazing opportunity
 - **Open Source Community** - For the incredible tools and libraries
@@ -373,7 +371,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - [NON_TECH_OVERVIEW.txt](NON_TECH_OVERVIEW.txt) - Plain-language explanation
 - [Envio HyperSync Docs](https://docs.envio.dev/)
 - [Streamlit Docs](https://docs.streamlit.io/)
-- [Azure OpenAI Docs](https://learn.microsoft.com/en-us/azure/ai-services/openai/)
+- [OpenAI Docs](https://platform.openai.com/docs)
 
 ---
 
